@@ -10,7 +10,7 @@ from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from starlette.datastructures import ImmutableMultiDict
 
@@ -19,6 +19,7 @@ from ..services.container import Services
 from ..services.ota import DevicePlan, PlanStatus
 from ..services.releases import ReleaseError
 from ..wled.firmware import MAX_IMAGE_BYTES, FirmwareError, format_version, parse_firmware
+from .ingress import redirect
 from .pages import _base_ctx, templates
 from .security import AdminDep, ServicesDep, require_admin
 
@@ -157,6 +158,7 @@ async def firmware_page(request: Request, services: ServicesDep, username: Admin
 
 @router.post("/firmware/custom")
 async def upload_custom(
+    request: Request,
     services: ServicesDep,
     file: Annotated[UploadFile, File()],
     device_ids: Annotated[list[int], Form()] = [],  # noqa: B006
@@ -165,15 +167,14 @@ async def upload_custom(
     try:
         parse_firmware(data)
     except FirmwareError as e:
-        return RedirectResponse("/firmware?" + urlencode({"error": f"Arquivo recusado: {e}"}),
-                                status_code=303)
+        return redirect(request, "/firmware?" + urlencode({"error": f"Arquivo recusado: {e}"}))
     if not device_ids:
-        return RedirectResponse("/firmware?" + urlencode(
-            {"error": "Selecione os dispositivos antes de enviar o arquivo."}), status_code=303)
+        return redirect(request, "/firmware?" + urlencode(
+            {"error": "Selecione os dispositivos antes de enviar o arquivo."}))
     custom_id = services.releases.store_custom(data)
     params = [("custom", custom_id), ("name", file.filename or "firmware.bin")]
     params += [("device_ids", str(i)) for i in device_ids]
-    return RedirectResponse("/firmware/plan?" + urlencode(params), status_code=303)
+    return redirect(request, "/firmware/plan?" + urlencode(params))
 
 
 async def _render_plan(request: Request, services: Services, username: str,
@@ -236,7 +237,7 @@ async def run_page(request: Request, services: ServicesDep, username: AdminDep):
         )
     job = services.ota.run(plans, pin=req.pin, stop_on_failure=bool(req.stop_on_failure),
                            title=title, backup=req.backup, ota_password=req.ota_password)
-    return RedirectResponse(f"/jobs/{job.id}", status_code=303)
+    return redirect(request, f"/jobs/{job.id}")
 
 
 # ---- recuperação após falha --------------------------------------------------------
@@ -267,7 +268,8 @@ async def recover_page(request: Request, job_id: int, device_id: int,
 
 
 @router.post("/firmware/recover/{job_id}/{device_id}/relock")
-async def recover_relock(job_id: int, device_id: int, services: ServicesDep,
+async def recover_relock(request: Request, job_id: int, device_id: int,
+                         services: ServicesDep,
                          pin: Annotated[str, Form()] = ""):
     device = await services.registry.get(device_id)
     if device is None:
@@ -275,9 +277,8 @@ async def recover_relock(job_id: int, device_id: int, services: ServicesDep,
     job = services.jobs.get(job_id)
     item = next((it for it in job.items if it.device_id == device_id), None) if job else None
     ok = await services.ota.relock_ota(device, pin or None, item)
-    return RedirectResponse(
-        f"/firmware/recover/{job_id}/{device_id}?relock={'ok' if ok else 'fail'}",
-        status_code=303,
+    return redirect(
+        request, f"/firmware/recover/{job_id}/{device_id}?relock={'ok' if ok else 'fail'}"
     )
 
 

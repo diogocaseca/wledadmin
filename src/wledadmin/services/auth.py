@@ -91,15 +91,23 @@ class AuthService:
         return ok
 
     async def change_credentials(
-        self, current_password: str, new_username: str, new_password: str
+        self,
+        current_password: str | None,
+        new_username: str,
+        new_password: str,
+        *,
+        verify_current: bool = True,
     ) -> None:
+        """verify_current=False só para quem já foi autenticado por outro meio (Ingress do
+        Home Assistant): permite redefinir a senha esquecida do acesso direto."""
         user = await self.get_admin()
         if user is None:
             raise CredentialError("nenhum administrador cadastrado")
-        try:
-            self._ph.verify(user.password_hash, current_password)
-        except (VerificationError, InvalidHashError):
-            raise CredentialError("senha atual incorreta") from None
+        if verify_current:
+            try:
+                self._ph.verify(user.password_hash, current_password or "")
+            except (VerificationError, InvalidHashError):
+                raise CredentialError("senha atual incorreta") from None
 
         new_username = new_username.strip()
         if not new_username or len(new_username) > 64 or ":" in new_username:

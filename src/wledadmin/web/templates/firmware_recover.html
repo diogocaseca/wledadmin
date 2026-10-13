@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Recuperar {{ device.name }} · wledadmin{% endblock %}
 {% block content %}
-<p><a href="/jobs/{{ job_id }}">← Voltar ao job</a></p>
+<p><a href="{{ root }}/jobs/{{ job_id }}">← Voltar ao job</a></p>
 
 <section class="card wide">
   <h1>Recuperar {{ device.name }}</h1>
@@ -29,7 +29,7 @@
   <p class="warn-text">A trava de OTA deste dispositivo foi desligada para a atualização e não
     pôde ser religada{% if not report.online %} porque ele não está respondendo{% endif %}.
     Religue assim que ele estiver online.</p>
-  <form method="post" action="/firmware/recover/{{ job_id }}/{{ device.id }}/relock" class="inline wrap">
+  <form method="post" action="{{ root }}/firmware/recover/{{ job_id }}/{{ device.id }}/relock" class="inline wrap">
     <input type="password" name="pin" inputmode="numeric" autocomplete="off" maxlength="8"
            placeholder="PIN (se houver)" aria-label="PIN de configurações">
     <button type="submit" class="primary" {% if not report.online %}disabled{% endif %}>Religar trava de OTA</button>
@@ -77,9 +77,9 @@
         </td>
         <td>
           {% if f.should_restore %}
-          <a class="button primary" href="/backups/{{ f.backup.id }}/restore?device_id={{ device.id }}">Restaurar {{ f.kind.label | lower }}</a>
+          <a class="button primary" href="{{ root }}/backups/{{ f.backup.id }}/restore?device_id={{ device.id }}">Restaurar {{ f.kind.label | lower }}</a>
           {% elif f.backup and f.status == "same" %}
-          <a href="/backups/{{ f.backup.id }}/restore?device_id={{ device.id }}" class="small">restaurar mesmo assim</a>
+          <a href="{{ root }}/backups/{{ f.backup.id }}/restore?device_id={{ device.id }}" class="small">restaurar mesmo assim</a>
           {% endif %}
         </td>
       </tr>
@@ -104,11 +104,11 @@
     {% elif report.files and report.files | selectattr("status", "equalto", "same") | list | length == report.files | length %}
       <p>A configuração e os presets estão iguais ao backup mais novo, então não é preciso
         restaurar nada. Você pode tentar a atualização de novo pela tela
-        <a href="/firmware">Firmware</a>.</p>
+        <a href="{{ root }}/firmware">Firmware</a>.</p>
     {% else %}
       <p class="muted">Confira a tabela acima. Sem backup para comparar não dá para sugerir
         uma restauração; considere fazer um backup agora na
-        <a href="/devices/{{ device.id }}">página do dispositivo</a>.</p>
+        <a href="{{ root }}/devices/{{ device.id }}">página do dispositivo</a>.</p>
     {% endif %}
   {% endif %}
 </section>

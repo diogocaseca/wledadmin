@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Restaurar · wledadmin{% endblock %}
 {% block content %}
-<p><a href="/devices/{{ device.id }}">← {{ device.name }}</a></p>
+<p><a href="{{ root }}/devices/{{ device.id }}">← {{ device.name }}</a></p>
 <section class="card wide">
   <h1>Restaurar {{ "configuração" if backup.kind == "cfg" else "presets" }} em {{ device.name }}</h1>
   <dl class="facts">
@@ -33,7 +33,7 @@
       Antes de enviar, o arquivo atual do dispositivo é salvo no histórico como
       "antes de restaurar", para você poder desfazer.
     </p>
-    <form method="post" action="/backups/{{ backup.id }}/restore" class="stack narrow">
+    <form method="post" action="{{ root }}/backups/{{ backup.id }}/restore" class="stack narrow">
       <input type="hidden" name="device_id" value="{{ device.id }}">
       <label>PIN de configurações do WLED (só se o dispositivo tiver um)
         <input type="password" name="pin" inputmode="numeric" autocomplete="off" maxlength="8">

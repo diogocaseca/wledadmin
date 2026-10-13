@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ device.name }} · wledadmin{% endblock %}
 {% block content %}
-<p><a href="/">← Dispositivos</a></p>
+<p><a href="{{ root }}/">← Dispositivos</a></p>
 
 <section class="card wide">
   <h1>
@@ -17,7 +17,7 @@
     <dt>Arquitetura</dt><dd>{{ device.arch }}</dd>
     <dt>Último backup verificado</dt><dd>{{ device.last_backup_at | dt }}</dd>
   </dl>
-  <form hx-post="/ui/backups" hx-target="#backup-result" class="inline">
+  <form hx-post="{{ root }}/ui/backups" hx-target="#backup-result" class="inline">
     <input type="hidden" name="device_ids" value="{{ device.id }}">
     <button type="submit">Fazer backup agora</button>
   </form>
@@ -47,14 +47,14 @@
         <td>{{ "%.1f" | format(b.size / 1024) }} KiB</td>
         <td>{{ BackupTrigger(b.trigger).label }}{% if b.note %} <span class="muted small" title="{{ b.note }}">· {{ b.note | truncate(24) }}</span>{% endif %}</td>
         <td class="row-actions">
-          <a href="/backups/{{ b.id }}/download">baixar</a>
-          <a href="/backups/{{ b.id }}/diff">diff</a>
-          <a href="/backups/{{ b.id }}/restore?device_id={{ device.id }}">restaurar</a>
-          {% if b.kind == "presets" %}<a href="/backups/{{ b.id }}/copy">copiar para…</a>{% endif %}
-          <button type="button" class="link" hx-post="/ui/backups/{{ b.id }}/pin"
+          <a href="{{ root }}/backups/{{ b.id }}/download">baixar</a>
+          <a href="{{ root }}/backups/{{ b.id }}/diff">diff</a>
+          <a href="{{ root }}/backups/{{ b.id }}/restore?device_id={{ device.id }}">restaurar</a>
+          {% if b.kind == "presets" %}<a href="{{ root }}/backups/{{ b.id }}/copy">copiar para…</a>{% endif %}
+          <button type="button" class="link" hx-post="{{ root }}/ui/backups/{{ b.id }}/pin"
                   hx-vals='{"pinned": {{ "false" if b.pinned else "true" }}}'>{{ "desafixar" if b.pinned else "fixar" }}</button>
           {% if not b.pinned %}
-          <button type="button" class="link danger" hx-delete="/ui/backups/{{ b.id }}"
+          <button type="button" class="link danger" hx-delete="{{ root }}/ui/backups/{{ b.id }}"
                   hx-confirm="Excluir a versão #{{ b.id }}?" hx-target="#backup-result">excluir</button>
           {% endif %}
         </td>
@@ -69,7 +69,7 @@
 <section class="card wide">
   <h2>Atualizações de firmware</h2>
   {% if not ota_history %}
-  <p class="muted">Nenhuma atualização feita pelo wledadmin. <a href="/firmware">Atualizar firmware</a></p>
+  <p class="muted">Nenhuma atualização feita pelo wledadmin. <a href="{{ root }}/firmware">Atualizar firmware</a></p>
   {% else %}
   <div class="table-wrap">
   <table>
@@ -97,7 +97,7 @@
     (Config → Security &amp; Updates → Backup) entra no histórico deste dispositivo e pode ser
     restaurado depois.
   </p>
-  <form method="post" action="/devices/{{ device.id }}/import" enctype="multipart/form-data" class="inline wrap">
+  <form method="post" action="{{ root }}/devices/{{ device.id }}/import" enctype="multipart/form-data" class="inline wrap">
     <input type="file" name="file" accept=".json,application/json" required>
     <select name="kind" aria-label="Tipo">
       <option value="auto">detectar tipo</option>

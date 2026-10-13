@@ -2,20 +2,20 @@
 {% block title %}Dispositivos · wledadmin{% endblock %}
 {% block content %}
 <section class="toolbar">
-  <form class="inline" hx-post="/ui/devices" hx-target="#add-result" hx-disabled-elt="find button">
+  <form class="inline" hx-post="{{ root }}/ui/devices" hx-target="#add-result" hx-disabled-elt="find button">
     <input name="host" placeholder="IP ou hostname" required aria-label="IP ou hostname">
     <button type="submit">Adicionar</button>
     <span id="add-result"></span>
   </form>
 
-  <form class="inline" hx-post="/ui/scan" hx-target="#scan-status">
+  <form class="inline" hx-post="{{ root }}/ui/scan" hx-target="#scan-status">
     <input name="subnets" value="{{ settings.scan_subnets }}" placeholder="192.168.1.0/24" required
            aria-label="Faixas de IP (CIDR, separadas por vírgula)" size="22">
     <button type="submit">Varrer rede</button>
     <span id="scan-status">{% include "partials/scan_status.html" %}</span>
   </form>
 
-  <a class="small" href="/backups/export.zip">Exportar backups (.zip)</a>
+  <a class="small" href="{{ root }}/backups/export.zip">Exportar backups (.zip)</a>
 
   <span class="muted small">
     mDNS: {% if mdns_active %}<span class="ok">ativo</span>{% else %}<span class="warn-text">inativo</span>{% endif %}
@@ -23,7 +23,7 @@
   </span>
 </section>
 
-<form id="bulk-form" hx-post="/ui/actions" hx-target="#action-result">
+<form id="bulk-form" hx-post="{{ root }}/ui/actions" hx-target="#action-result">
   <section class="actions">
     <span class="muted">Selecionados:</span>
     <button name="kind" value="on">Ligar</button>
@@ -40,7 +40,7 @@
       <input type="number" name="preset_value" min="1" max="250" placeholder="ID" aria-label="Preset">
       <button name="kind" value="preset">Aplicar preset</button>
     </span>
-    <button type="button" hx-post="/ui/backups">Fazer backup</button>
+    <button type="button" hx-post="{{ root }}/ui/backups">Fazer backup</button>
   </section>
   <div id="action-result"></div>
 
@@ -66,7 +66,7 @@
       </tr>
     </thead>
     <tbody id="device-rows"
-           hx-get="/ui/devices/rows"
+           hx-get="{{ root }}/ui/devices/rows"
            hx-target="this"
            hx-trigger="every 5s, devices-changed from:body"
            hx-include="#device-rows input[name=device_ids]:checked">

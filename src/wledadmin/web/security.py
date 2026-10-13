@@ -17,6 +17,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import PlainTextResponse
 
 from ..services.container import Services
+from .ingress import is_ingress
 
 REALM = "wledadmin"
 _basic = HTTPBasic(realm=REALM, auto_error=False)
@@ -31,10 +32,16 @@ def get_services(request: Request) -> Services:
 ServicesDep = Annotated[Services, Depends(get_services)]
 
 
+INGRESS_USER = "Home Assistant"
+
+
 async def require_admin(
+    request: Request,
     services: ServicesDep,
     credentials: Annotated[HTTPBasicCredentials | None, Depends(_basic)],
 ) -> str:
+    if is_ingress(request):
+        return INGRESS_USER  # já autenticado pelo Home Assistant
     if credentials is not None and await services.auth.verify(
         credentials.username, credentials.password
     ):
@@ -51,7 +58,9 @@ AdminDep = Annotated[str, Depends(require_admin)]
 
 class SameOriginMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        if request.method not in SAFE_METHODS:
+        # Pelo Ingress, a origem é o endereço do HA, e o próprio HA já exige a sessão do
+        # usuário para chegar até aqui.
+        if request.method not in SAFE_METHODS and not is_ingress(request):
             origin = request.headers.get("origin") or request.headers.get("referer")
             if origin is not None:
                 allowed = {

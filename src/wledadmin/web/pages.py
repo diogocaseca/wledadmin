@@ -22,10 +22,16 @@ from ..services.app_settings import (
 from ..services.auth import CredentialError
 from ..services.discovery import ScanAlreadyRunning
 from . import view
+from .ingress import is_ingress
 from .operations import OperationError, add_manual, delete_device
 from .security import AdminDep, ServicesDep, require_admin
 
-templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
+templates = Jinja2Templates(
+    directory=Path(__file__).parent / "templates",
+    # `root` = prefixo do Ingress do HA ("" fora dele); use em toda URL interna.
+    context_processors=[lambda request: {"root": request.scope.get("root_path", ""),
+                                         "ingress": is_ingress(request)}],
+)
 templates.env.filters.update(
     mac=view.fmt_mac, uptime=view.fmt_uptime, kib=view.fmt_kib, dt=view.fmt_dt
 )
@@ -150,17 +156,20 @@ async def settings_account(
     request: Request,
     services: ServicesDep,
     username: AdminDep,
-    current_password: Annotated[str, Form()],
     new_username: Annotated[str, Form()],
     new_password: Annotated[str, Form()],
     confirm_password: Annotated[str, Form()],
+    current_password: Annotated[str, Form()] = "",
 ):
     error = None
     if new_password != confirm_password:
         error = "a confirmação não confere com a nova senha"
     else:
         try:
-            await services.auth.change_credentials(current_password, new_username, new_password)
+            await services.auth.change_credentials(
+                current_password, new_username, new_password,
+                verify_current=not is_ingress(request),
+            )
         except CredentialError as e:
             error = str(e)
     ctx = await _base_ctx(services, username)

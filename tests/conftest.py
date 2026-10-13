@@ -12,7 +12,7 @@ from wledadmin.services.registry import DeviceRegistry
 from wledadmin.services.status_store import StatusStore
 from wledadmin.wled import WLEDClient, build_http_client
 
-from .fakes import FakeWLEDNetwork
+from .fakes import FakeWLEDNetwork, standard_github
 
 
 @pytest.fixture
@@ -66,6 +66,7 @@ ADMIN = basic("admin", "admin")
 
 @pytest.fixture
 def app_client(settings, network):
-    app = create_app(settings, start_background=False, wled_transport=network.transport())
+    app = create_app(settings, start_background=False, wled_transport=network.transport(),
+                     github_transport=standard_github().transport())
     with TestClient(app, base_url="http://wledadmin.test") as tc:
         yield tc

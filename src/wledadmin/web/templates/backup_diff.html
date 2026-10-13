@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Diff #{{ backup.id }} · wledadmin{% endblock %}
 {% block content %}
-<p>{% if device %}<a href="/devices/{{ device.id }}">← {{ device.name }}</a>{% else %}<a href="/">← Dispositivos</a>{% endif %}</p>
+<p>{% if device %}<a href="{{ root }}/devices/{{ device.id }}">← {{ device.name }}</a>{% else %}<a href="{{ root }}/">← Dispositivos</a>{% endif %}</p>
 <section class="card wide">
   <h1>{{ backup.device_name }}: versão #{{ backup.id }}</h1>
   <p class="muted">

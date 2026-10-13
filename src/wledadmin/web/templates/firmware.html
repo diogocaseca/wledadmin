@@ -3,13 +3,13 @@
 {% block content %}
 {% if error %}<p class="flash error block">{{ error }}</p>{% endif %}
 
-<form method="get" action="/firmware/plan" id="fw-form">
+<form method="get" action="{{ root }}/firmware/plan" id="fw-form">
 <section class="card wide">
   <h1>Atualizar firmware</h1>
   <p class="muted small">
     Releases de <a href="https://github.com/{{ repo }}/releases" target="_blank" rel="noopener">{{ repo }}</a>
-    · <a href="/firmware?refresh=1">recarregar lista</a>
-    · repositório e betas em <a href="/settings">Configurações</a>.
+    · <a href="{{ root }}/firmware?refresh=1">recarregar lista</a>
+    · repositório e betas em <a href="{{ root }}/settings">Configurações</a>.
     Nada é enviado nesta etapa: o próximo passo mostra o plano para você revisar.
   </p>
   {% if releases_error %}
@@ -42,7 +42,7 @@
         <td><input type="checkbox" name="device_ids" value="{{ d.id }}" form="fw-form"
                    aria-label="Selecionar {{ d.name }}"></td>
         <td>{% if st.online is false %}<span class="dot off"></span>{% elif st.online %}<span class="dot on"></span>{% else %}<span class="dot unknown"></span>{% endif %}</td>
-        <td><a href="/devices/{{ d.id }}">{{ d.name }}</a></td>
+        <td><a href="{{ root }}/devices/{{ d.id }}">{{ d.name }}</a></td>
         <td class="mono">{{ d.ip }}</td>
         <td>{{ (st.info.ver if st.info else d.version) or "—" }}</td>
         <td>{{ (st.info.release if st.info else d.release) or "—" }}</td>
@@ -65,7 +65,7 @@
     (chip, família, flash e downgrade). Divergências de release ou de versão mínima viram
     avisos. Marque os dispositivos na tabela acima antes de enviar.
   </p>
-  <form method="post" action="/firmware/custom" enctype="multipart/form-data" class="inline wrap"
+  <form method="post" action="{{ root }}/firmware/custom" enctype="multipart/form-data" class="inline wrap"
         onsubmit="document.querySelectorAll('#fw-form input[name=device_ids]:checked').forEach(c => { const h = document.createElement('input'); h.type = 'hidden'; h.name = 'device_ids'; h.value = c.value; this.appendChild(h) })">
     <input type="file" name="file" accept=".bin,.gz" required>
     <button type="submit">Enviar e planejar</button>

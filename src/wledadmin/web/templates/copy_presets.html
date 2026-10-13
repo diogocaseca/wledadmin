@@ -9,7 +9,7 @@
     Os presets atuais dos dispositivos escolhidos serão substituídos. Antes, cada um ganha um
     backup "antes de restaurar" no próprio histórico. A cópia é feita um dispositivo por vez.
   </div>
-  <form method="post" action="/backups/{{ backup.id }}/copy" class="stack">
+  <form method="post" action="{{ root }}/backups/{{ backup.id }}/copy" class="stack">
     <div class="table-wrap">
     <table>
       <thead><tr><th></th><th></th><th>Nome</th><th>IP</th><th>Firmware</th></tr></thead>

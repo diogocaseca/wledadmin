@@ -9,7 +9,7 @@
   {% elif backup_error %}
   <p class="flash error">{{ backup_error }}</p>
   {% endif %}
-  <form method="post" action="/settings/backup" class="stack">
+  <form method="post" action="{{ root }}/settings/backup" class="stack">
     <label>Intervalo entre backups (horas)
       <input type="number" name="backup_interval_hours" min="0" max="720" required
              value="{{ backup_interval_hours }}">
@@ -33,7 +33,7 @@
   {% elif firmware_error %}
   <p class="flash error">{{ firmware_error }}</p>
   {% endif %}
-  <form method="post" action="/settings/firmware" class="stack">
+  <form method="post" action="{{ root }}/settings/firmware" class="stack">
     <label>Repositório no GitHub
       <input name="ota_repo" value="{{ ota_repo }}" required pattern="[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+">
       <span class="muted small">Padrão: wled/WLED. Dispositivos 16.x de outro repositório são bloqueados.</span>
@@ -58,10 +58,15 @@
   {% elif account_error %}
   <p class="flash error">{{ account_error }}</p>
   {% endif %}
-  <form method="post" action="/settings/account" class="stack">
+  <form method="post" action="{{ root }}/settings/account" class="stack">
+    {% if ingress %}
+    <p class="muted small">Você entrou pelo Home Assistant, então a senha atual não é pedida:
+      defina abaixo o usuário e a senha do acesso direto (porta 8000).</p>
+    {% else %}
     <label>Senha atual
       <input type="password" name="current_password" autocomplete="current-password" required>
     </label>
+    {% endif %}
     <label>Novo usuário
       <input name="new_username" value="{{ username }}" autocomplete="username" required maxlength="64">
     </label>
@@ -74,7 +79,8 @@
     <button type="submit">Salvar</button>
   </form>
   <p class="muted small">
-    Esqueceu a senha? No servidor, rode <code>wledadmin reset-admin</code>
+    Esqueceu a senha? No app do Home Assistant, abra pela barra lateral e defina uma nova.
+    Fora do HA, no servidor, rode <code>wledadmin reset-admin</code>
     (ou <code>docker compose exec wledadmin wledadmin reset-admin</code>) para voltar a admin/admin.
   </p>
 </section>

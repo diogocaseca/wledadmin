@@ -1,6 +1,6 @@
 [project]
 name = "wledadmin"
-version = "0.1.0"
+version = "0.5.0"
 description = "Painel web self-hosted para administrar vários dispositivos WLED na rede local"
 readme = "README.md"
 license = "MIT"

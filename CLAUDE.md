@@ -64,6 +64,16 @@ cache HMAC curto). `SameOriginMiddleware` bloqueia POST/DELETE com `Origin`/`Ref
 outro host (CSRF, já que o navegador reenvia Basic). PIN do WLED nunca é persistido e
 nunca deve ir para query string: formulários que podem conter PIN recalculam por POST.
 
+**Ingress do Home Assistant** (`web/ingress.py`). O app é empacotado como App do HA em
+outro repositório (`diogocaseca/wledadmin-ha`), que instala uma **tag** deste. Com
+`WLEDADMIN_INGRESS=true`, requisições do IP do Supervisor com `X-Ingress-Path` viram
+Ingress: o middleware prefixa `root_path` **e** `path` (o Starlette 1.x espera o `path`
+com o `root_path`), e o login Basic e a checagem de origem são dispensados. Toda URL
+interna em template usa `{{ root }}/...` (context processor). **Não use `url_for` em
+templates**: ele gera URL absoluta com o host interno do proxy, inacessível ao navegador.
+Redirecionamentos usam `ingress.redirect(request, path)`. `tests/test_ingress.py` varre as
+páginas atrás de URLs sem prefixo.
+
 **HTMX.** `hx-target` é herdado do elemento pai: elementos com polling dentro de um
 `<form>` que tem `hx-target` precisam de `hx-target="this"`. A tabela principal preserva
 a seleção mandando os checkboxes marcados via `hx-include`. Respostas usam o header

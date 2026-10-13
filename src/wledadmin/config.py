@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     scan_timeout: float = 1.5
     scan_max_hosts: int = 4096
 
+    # Ingress do Home Assistant (quando roda como app do HA). Desligado fora do HA.
+    ingress: bool = False
+    ingress_proxy_ip: str = "172.30.32.2"
+
     # Firmware (OTA). O token é opcional: sem ele a API do GitHub limita a 60 req/h,
     # o que basta porque a lista de releases fica em cache.
     github_token: str | None = None

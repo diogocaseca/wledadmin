@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Plano de atualização · wledadmin{% endblock %}
 {% block content %}
-<p><a href="/firmware">← Firmware</a></p>
+<p><a href="{{ root }}/firmware">← Firmware</a></p>
 
-<form method="post" action="/firmware/run">
+<form method="post" action="{{ root }}/firmware/run">
 {% if req.custom_id %}
   <input type="hidden" name="custom" value="{{ req.custom_id }}">
   <input type="hidden" name="name" value="{{ req.custom_name }}">
@@ -45,11 +45,11 @@
             <option value="{{ a.name }}" {% if req.manual.get(p.device.id) == a.name %}selected{% endif %}>{{ a.name }}</option>
             {% endfor %}
           </select>
-          <button type="submit" formaction="/firmware/plan" formnovalidate class="link">conferir</button>
+          <button type="submit" formaction="{{ root }}/firmware/plan" formnovalidate class="link">conferir</button>
         {% endif %}
         {% if p.status == "current" %}
           <label class="check small"><input type="checkbox" name="reinstall" value="{{ p.device.id }}"
-                 onchange="this.form.action='/firmware/plan'; this.form.noValidate = true; this.form.submit()"> reinstalar</label>
+                 onchange="this.form.action='{{ root }}/firmware/plan'; this.form.noValidate = true; this.form.submit()"> reinstalar</label>
         {% elif p.reinstall and not req.custom_id %}
           <input type="hidden" name="reinstall" value="{{ p.device.id }}">
         {% endif %}

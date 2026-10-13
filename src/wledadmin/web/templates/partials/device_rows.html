@@ -7,7 +7,7 @@
     {% elif r.online %}<span class="dot on" title="Online"></span>
     {% else %}<span class="dot off" title="Offline: {{ r.last_error or '' }} (visto em {{ r.last_seen_at|dt }})"></span>{% endif %}
   </td>
-  <td><a href="/devices/{{ r.id }}">{{ r.name }}</a>
+  <td><a href="{{ root }}/devices/{{ r.id }}">{{ r.name }}</a>
       <a class="ext" href="http://{{ r.ip }}/" target="_blank" rel="noopener" title="Abrir a interface do WLED">↗</a>
       {% if r.hostname %}<div class="muted small">{{ r.hostname }}</div>{% endif %}</td>
   <td class="mono">{{ r.ip }}</td>
@@ -28,7 +28,7 @@
   </td>
   <td class="{{ 'warn-text' if r.backup_stale else 'muted' }} small"
       title="{{ 'Último backup verificado: ' ~ (r.last_backup_at | dt) }}">{{ r.backup_age }}</td>
-  <td><button type="button" class="link danger" hx-delete="/ui/devices/{{ r.id }}"
+  <td><button type="button" class="link danger" hx-delete="{{ root }}/ui/devices/{{ r.id }}"
               hx-confirm="Remover {{ r.name }} do painel? (o dispositivo não é alterado)"
               hx-target="this" hx-swap="none">remover</button></td>
 </tr>

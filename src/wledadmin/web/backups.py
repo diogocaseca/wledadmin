@@ -21,6 +21,7 @@ from ..services.backup import (
 from ..services.container import Services
 from ..services.jobs import ItemStatus, Job, JobItem, JobStatus
 from ..wled import WLEDError
+from .ingress import redirect
 from .pages import REFRESH, _base_ctx, _flash, templates
 from .security import AdminDep, ServicesDep, require_admin
 
@@ -146,6 +147,7 @@ async def device_page(
 
 @router.post("/devices/{device_id}/import")
 async def import_backup(
+    request: Request,
     device_id: int,
     services: ServicesDep,
     file: Annotated[UploadFile, File()],
@@ -160,18 +162,18 @@ async def import_backup(
             device, content, chosen, note.strip() or file.filename
         )
     except BackupError as e:
-        return _redirect_device(device_id, error=f"Importação recusada: {e}")
+        return _redirect_device(request, device_id, error=f"Importação recusada: {e}")
     if outcome.status == "unchanged":
         msg = f"O arquivo é idêntico à versão #{outcome.backup.id}; nada foi criado."
     else:
         msg = f"Backup de {outcome.kind.label.lower()} importado como versão #{outcome.backup.id}."
-    return _redirect_device(device_id, message=msg)
+    return _redirect_device(request, device_id, message=msg)
 
 
-def _redirect_device(device_id: int, **params: str) -> RedirectResponse:
+def _redirect_device(request: Request, device_id: int, **params: str) -> RedirectResponse:
     from urllib.parse import urlencode
 
-    return RedirectResponse(f"/devices/{device_id}?{urlencode(params)}", status_code=303)
+    return redirect(request, f"/devices/{device_id}?{urlencode(params)}")
 
 
 # ---- versões individuais ------------------------------------------------------------
@@ -272,6 +274,7 @@ async def restore_confirm(
 
 @router.post("/backups/{backup_id}/restore")
 async def restore_submit(
+    request: Request,
     backup_id: int,
     services: ServicesDep,
     device_id: Annotated[int, Form()],
@@ -289,7 +292,7 @@ async def restore_submit(
     if problems := services.backups.restore_problems(device, backup):
         raise HTTPException(409, " ".join(problems))
     job = start_restore_job(services, backup, [device], pin or None)
-    return RedirectResponse(f"/jobs/{job.id}", status_code=303)
+    return redirect(request, f"/jobs/{job.id}")
 
 
 # ---- cópia de presets ---------------------------------------------------------------
@@ -313,6 +316,7 @@ async def copy_presets_page(request: Request, backup_id: int, services: Services
 
 @router.post("/backups/{backup_id}/copy")
 async def copy_presets_submit(
+    request: Request,
     backup_id: int,
     services: ServicesDep,
     device_ids: Annotated[list[int], Form()] = [],  # noqa: B006
@@ -328,4 +332,4 @@ async def copy_presets_submit(
     if not devices:
         raise HTTPException(400, "selecione pelo menos um dispositivo")
     job = start_restore_job(services, backup, devices, pin or None)
-    return RedirectResponse(f"/jobs/{job.id}", status_code=303)
+    return redirect(request, f"/jobs/{job.id}")

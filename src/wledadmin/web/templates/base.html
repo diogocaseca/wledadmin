@@ -4,23 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}wledadmin{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
-  <script src="{{ url_for('static', path='htmx.min.js') }}" defer></script>
+  <link rel="stylesheet" href="{{ root }}/static/app.css">
+  <script src="{{ root }}/static/htmx.min.js" defer></script>
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/">wledadmin</a>
+    <a class="brand" href="{{ root }}/">wledadmin</a>
     <nav>
-      <a href="/">Dispositivos</a>
-      <a href="/firmware">Firmware</a>
-      <a href="/settings">Configurações</a>
+      <a href="{{ root }}/">Dispositivos</a>
+      <a href="{{ root }}/firmware">Firmware</a>
+      <a href="{{ root }}/settings">Configurações</a>
     </nav>
     <span class="user">{{ username }}</span>
   </header>
   {% if default_password %}
   <div class="banner warn">
     Você ainda está usando o login padrão <strong>admin/admin</strong>.
-    <a href="/settings">Troque agora</a>.
+    <a href="{{ root }}/settings">Troque agora</a>.
   </div>
   {% endif %}
   <main>
