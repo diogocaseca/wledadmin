@@ -1,0 +1,11 @@
+{% if scan %}
+  {% if scan.status == "running" %}
+  <span class="muted small" hx-get="/ui/scan" hx-trigger="every 1s" hx-target="#scan-status">
+    Varrendo… {{ scan.done }}/{{ scan.total }} · {{ scan.found | length }} encontrado(s)
+  </span>
+  {% elif scan.status == "done" %}
+  <span class="muted small">Última varredura: {{ scan.found | length }} WLED em {{ scan.total }} IPs.</span>
+  {% else %}
+  <span class="flash error">Varredura falhou: {{ scan.error }}</span>
+  {% endif %}
+{% endif %}

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Dispositivos · wledadmin{% endblock %}
+{% block content %}
+<section class="toolbar">
+  <form class="inline" hx-post="/ui/devices" hx-target="#add-result" hx-disabled-elt="find button">
+    <input name="host" placeholder="IP ou hostname" required aria-label="IP ou hostname">
+    <button type="submit">Adicionar</button>
+    <span id="add-result"></span>
+  </form>
+
+  <form class="inline" hx-post="/ui/scan" hx-target="#scan-status">
+    <input name="subnets" value="{{ settings.scan_subnets }}" placeholder="192.168.1.0/24" required
+           aria-label="Faixas de IP (CIDR, separadas por vírgula)" size="22">
+    <button type="submit">Varrer rede</button>
+    <span id="scan-status">{% include "partials/scan_status.html" %}</span>
+  </form>
+
+  <span class="muted small">
+    mDNS: {% if mdns_active %}<span class="ok">ativo</span>{% else %}<span class="warn-text">inativo</span>{% endif %}
+    · atualização a cada {{ settings.poll_interval|int }} s
+  </span>
+</section>
+
+<form id="bulk-form" hx-post="/ui/actions" hx-target="#action-result">
+  <section class="actions">
+    <span class="muted">Selecionados:</span>
+    <button name="kind" value="on">Ligar</button>
+    <button name="kind" value="off">Desligar</button>
+    <button name="kind" value="toggle">Alternar</button>
+    <span class="group">
+      <input type="range" name="bri_value" min="0" max="255" value="128"
+             oninput="this.nextElementSibling.textContent = Math.round(this.value * 100 / 255) + '%'"
+             aria-label="Brilho">
+      <output>50%</output>
+      <button name="kind" value="brightness">Aplicar brilho</button>
+    </span>
+    <span class="group">
+      <input type="number" name="preset_value" min="1" max="250" placeholder="ID" aria-label="Preset">
+      <button name="kind" value="preset">Aplicar preset</button>
+    </span>
+  </section>
+  <div id="action-result"></div>
+
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th><input type="checkbox" aria-label="Selecionar todos"
+                   onclick="document.querySelectorAll('#device-rows input[name=device_ids]').forEach(c => c.checked = this.checked)"></th>
+        <th></th>
+        <th>Nome</th>
+        <th>IP</th>
+        <th>MAC</th>
+        <th>Firmware</th>
+        <th>Arq.</th>
+        <th>Wi-Fi</th>
+        <th>Uptime</th>
+        <th>LEDs</th>
+        <th>Heap livre</th>
+        <th>Estado</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="device-rows"
+           hx-get="/ui/devices/rows"
+           hx-target="this"
+           hx-trigger="every 5s, devices-changed from:body"
+           hx-include="#device-rows input[name=device_ids]:checked">
+      {% include "partials/device_rows.html" %}
+    </tbody>
+  </table>
+  </div>
+</form>
+{% endblock %}

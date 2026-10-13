@@ -1,0 +1,9 @@
+{% set failed = results | rejectattr("ok") | list %}
+<div class="flash {{ 'error' if failed else 'success' }}">
+  {{ results | length - failed | length }} de {{ results | length }} dispositivo(s) OK.
+  {% if failed %}
+  <ul>
+    {% for r in failed %}<li><strong>{{ r.name }}</strong>: {{ r.error }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+</div>

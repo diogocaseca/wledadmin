@@ -1,0 +1,36 @@
+{% for r in rows %}
+<tr class="{% if r.online is false %}offline{% endif %}">
+  <td><input type="checkbox" name="device_ids" value="{{ r.id }}" {% if r.id in selected %}checked{% endif %}
+             aria-label="Selecionar {{ r.name }}"></td>
+  <td>
+    {% if r.online is none %}<span class="dot unknown" title="Aguardando primeira consulta"></span>
+    {% elif r.online %}<span class="dot on" title="Online"></span>
+    {% else %}<span class="dot off" title="Offline: {{ r.last_error or '' }} (visto em {{ r.last_seen_at|dt }})"></span>{% endif %}
+  </td>
+  <td><a href="http://{{ r.ip }}/" target="_blank" rel="noopener">{{ r.name }}</a>
+      {% if r.hostname %}<div class="muted small">{{ r.hostname }}</div>{% endif %}</td>
+  <td class="mono">{{ r.ip }}</td>
+  <td class="mono small">{{ r.mac|mac }}</td>
+  <td>{{ r.version or "—" }}</td>
+  <td>{{ r.arch_label }}</td>
+  <td>{% if r.rssi is not none %}{{ r.rssi }} dBm{% if r.signal is not none %} <span class="muted small">({{ r.signal }}%)</span>{% endif %}{% else %}—{% endif %}</td>
+  <td>{{ r.uptime|uptime }}</td>
+  <td>{{ r.led_count if r.led_count is not none else "—" }}</td>
+  <td>{{ r.freeheap|kib }}</td>
+  <td>
+    {% if r.on is none %}—
+    {% else %}
+      <span class="pill {{ 'lit' if r.on else '' }}">{{ "Ligado" if r.on else "Desligado" }}</span>
+      {% if r.bri_percent is not none %}<span class="muted small">{{ r.bri_percent }}%</span>{% endif %}
+      {% if r.preset %}<span class="muted small">· P{{ r.preset }}</span>{% endif %}
+    {% endif %}
+  </td>
+  <td><button type="button" class="link danger" hx-delete="/ui/devices/{{ r.id }}"
+              hx-confirm="Remover {{ r.name }} do painel? (o dispositivo não é alterado)"
+              hx-target="this" hx-swap="none">remover</button></td>
+</tr>
+{% else %}
+<tr><td colspan="13" class="empty">
+  Nenhum dispositivo ainda. Aguarde a descoberta mDNS, faça uma varredura ou adicione um IP.
+</td></tr>
+{% endfor %}

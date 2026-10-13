@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Conta · wledadmin{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Conta de administrador</h1>
+  {% if saved %}
+  <p class="flash success">
+    Credenciais alteradas. O navegador vai pedir o novo usuário e a nova senha na próxima requisição.
+  </p>
+  {% elif error %}
+  <p class="flash error">{{ error }}</p>
+  {% endif %}
+  <form method="post" action="/settings/account" class="stack">
+    <label>Senha atual
+      <input type="password" name="current_password" autocomplete="current-password" required>
+    </label>
+    <label>Novo usuário
+      <input name="new_username" value="{{ username }}" autocomplete="username" required maxlength="64">
+    </label>
+    <label>Nova senha (mín. 8 caracteres)
+      <input type="password" name="new_password" autocomplete="new-password" required minlength="8">
+    </label>
+    <label>Confirmar nova senha
+      <input type="password" name="confirm_password" autocomplete="new-password" required minlength="8">
+    </label>
+    <button type="submit">Salvar</button>
+  </form>
+  <p class="muted small">
+    Esqueceu a senha? No servidor, rode <code>wledadmin reset-admin</code>
+    (ou <code>docker compose exec wledadmin wledadmin reset-admin</code>) para voltar a admin/admin.
+  </p>
+</section>
+{% endblock %}

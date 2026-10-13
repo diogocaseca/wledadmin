@@ -1,0 +1,18 @@
+services:
+  wledadmin:
+    build: .
+    image: wledadmin:latest
+    container_name: wledadmin
+    # Necessário para a descoberta mDNS: o multicast (224.0.0.251:5353) não atravessa
+    # a rede bridge do Docker. Com host, "ports:" é ignorado; o painel escuta direto na
+    # porta WLEDADMIN_PORT do host (padrão 8000). Veja o README para alternativas.
+    network_mode: host
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - wledadmin-data:/data
+    restart: unless-stopped
+
+volumes:
+  wledadmin-data:

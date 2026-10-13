@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}wledadmin{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
+  <script src="{{ url_for('static', path='htmx.min.js') }}" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">wledadmin</a>
+    <nav>
+      <a href="/">Dispositivos</a>
+      <a href="/settings">Conta</a>
+    </nav>
+    <span class="user">{{ username }}</span>
+  </header>
+  {% if default_password %}
+  <div class="banner warn">
+    Você ainda está usando o login padrão <strong>admin/admin</strong>.
+    <a href="/settings">Troque agora</a>.
+  </div>
+  {% endif %}
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
