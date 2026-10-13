@@ -29,6 +29,7 @@ from ..models import Backup, Device, OtaUpdate, utcnow
 from ..wled import (
     Arch,
     DeviceInfo,
+    DeviceState,
     WLEDAuthRequired,
     WLEDClient,
     WLEDError,
@@ -160,6 +161,7 @@ class OtaService:
         reboot_poll_interval: float = 3.0,
         lock_poll_interval: float = 0.5,
         lock_timeout: float = 5.0,
+        preset_settle: float = 1.0,
     ) -> None:
         self._sf = session_factory
         self._client = client
@@ -175,6 +177,7 @@ class OtaService:
         self._reboot_poll_interval = reboot_poll_interval
         self._lock_poll_interval = lock_poll_interval
         self._lock_timeout = lock_timeout
+        self._preset_settle = preset_settle
 
     @property
     def repo(self) -> str:
@@ -408,7 +411,8 @@ class OtaService:
     # ---- execução ----------------------------------------------------------------------
 
     def run(self, plans: list[DevicePlan], *, pin: str | None, stop_on_failure: bool,
-            title: str, backup: bool = True, ota_password: str | None = None) -> Job:
+            title: str, backup: bool = True, ota_password: str | None = None,
+            lights_off: bool = True) -> Job:
         runnable = [p for p in plans if p.status is PlanStatus.READY and p.steps]
         by_id = {p.device.id: p for p in runnable}
         stopped = {"value": False}
@@ -419,7 +423,8 @@ class OtaService:
                 item.message = "cancelado: um dispositivo anterior falhou"
                 return
             try:
-                await self._update_device(by_id[device.id], pin, item, backup, ota_password)
+                await self._update_device(by_id[device.id], pin, item, backup, ota_password,
+                                          lights_off)
             except Exception:
                 if stop_on_failure:
                     stopped["value"] = True
@@ -429,7 +434,8 @@ class OtaService:
                                 kind="ota")
 
     async def _update_device(self, plan: DevicePlan, pin: str | None, item: JobItem,
-                             backup: bool, ota_password: str | None = None) -> None:
+                             backup: bool, ota_password: str | None = None,
+                             lights_off: bool = True) -> None:
         device = plan.device
         if backup:
             item.step("Backup de cfg.json e presets.json antes de atualizar")
@@ -445,7 +451,11 @@ class OtaService:
         final = format_version(plan.steps[-1].version)
         done = f"atualizado para {final}" if final != "?" else "firmware instalado"
         async with self._registry.lock(device.id):
+            # Luz acesa durante a gravação pode fazer o ESP (sobretudo ESP8266 com PWM)
+            # descartar o firmware novo no reboot. Apagamos e devolvemos no fim.
+            saved = await self._lights_off(device, item) if lights_off else None
             unlocked = False
+            error: Exception | None = None
             try:
                 if plan.ota_locked:
                     await self._unlock_ota(device, pin, ota_password, item)
@@ -454,16 +464,59 @@ class OtaService:
                 for n, choice in enumerate(plan.steps, 1):
                     prefix = f"[{n}/{total}] " if total > 1 else ""
                     await self._install(device, choice, pin, item, prefix)
-            except Exception:
-                if unlocked:  # tenta religar mesmo com falha; não mascara o erro original
-                    await self.relock_ota(device, pin, item)
-                raise
-            if unlocked and not await self.relock_ota(device, pin, item):
+            except Exception as e:  # limpeza abaixo roda também na falha
+                error = e
+            relocked = await self.relock_ota(device, pin, item) if unlocked else True
+            if saved is not None:
+                await self._restore_lights(device, saved, item)
+            if error is not None:
+                raise error
+            if not relocked:
                 raise StepFailed(f"{done}, mas não consegui religar a trava de OTA. "
                                  "Use \"Recuperar\" para religá-la.")
         item.message = done
         if self._notify:
             self._notify()
+
+    async def _lights_off(self, device: Device, item: JobItem) -> DeviceState:
+        """Apaga as luzes e devolve o estado anterior (para restaurar no fim)."""
+        item.step("Apagando as luzes durante a atualização")
+        try:
+            state = await self._client.get_state(device.ip)
+            if state.on is False:
+                item.step("As luzes já estavam apagadas")
+                return state
+            # "tt": transição só desta chamada (0 = imediato)
+            await self._client.set_state(device.ip, {"on": False, "tt": 0})
+        except WLEDError as e:
+            raise StepFailed(f"não consegui apagar as luzes antes de atualizar: {e}") from e
+        return state
+
+    async def _restore_lights(self, device: Device, saved: DeviceState,
+                              item: JobItem) -> None:
+        """Devolve ligado/desligado e brilho; reaplica o preset se havia um ativo.
+
+        Depois do reboot o WLED aplica o próprio estado de inicialização, por isso o
+        estado anterior é reenviado mesmo quando as luzes estavam apagadas. Não restaura
+        efeitos/cores/segmentos: entre versões de firmware o formato pode mudar.
+        """
+        try:
+            if saved.on:
+                if saved.ps and saved.ps > 0:
+                    await self._client.set_state(device.ip, {"ps": saved.ps})
+                    # o WLED aplica o preset no loop principal; o brilho vem depois
+                    await asyncio.sleep(self._preset_settle)
+                payload: dict = {"on": True}
+                if saved.bri:
+                    payload["bri"] = saved.bri
+                await self._client.set_state(device.ip, payload)
+                item.step("Luzes acesas de novo"
+                          + (f" (preset {saved.ps})" if saved.ps and saved.ps > 0 else ""))
+            else:
+                await self._client.set_state(device.ip, {"on": False})
+                item.step("Luzes mantidas apagadas, como estavam")
+        except WLEDError:
+            item.step("Aviso: não consegui devolver as luzes ao estado anterior")
 
     async def _unlock_ota(self, device: Device, pin: str | None,
                           ota_password: str | None, item: JobItem) -> None:

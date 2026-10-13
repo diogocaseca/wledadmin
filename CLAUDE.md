@@ -126,7 +126,10 @@ campos: confira em `wled00/json.cpp`, `wled_server.cpp`, `cfg.cpp`, `ota_update.
   WLED responde sucesso mesmo com senha errada. Religar nunca reenvia `psk`
   (`getStringFromJson` ignora nulo, então a senha guardada não muda). Nunca usar
   `/settings/sec` para isso: ele redefine outras opções e pode trocar o PIN.
-  O backup `pre_ota` é opcional (caixa marcada por padrão). Jobs de OTA têm
+  Por padrão as luzes são apagadas antes do envio (`lights_off`; em lâmpadas ESP8266 com a
+  luz acesa o firmware novo era descartado no reboot) e devolvidas no fim, mesmo após falha:
+  `on`/`bri` e o preset ativo (`ps` é aplicado no loop do WLED, por isso vai antes e o
+  brilho depois de `preset_settle`). O backup `pre_ota` é opcional (caixa marcada por padrão). Jobs de OTA têm
   `Job.kind == "ota"`, e itens com falha levam a `/firmware/recover/<job>/<device>`, que
   usa `OtaService.diagnose()` (estado ao vivo × backup mais novo) para sugerir restore.
 - Requisições aos ESP usam keep-alive desligado (poucos sockets no ESP; não roubar vaga

@@ -98,6 +98,11 @@
     <p id="no-backup" class="warn-text small" {% if form.get('backup', True) %}hidden{% endif %}>
       ⚠ Sem backup, se a atualização falhar, a sugestão de restauração vai usar o backup mais
       recente que já existir no histórico, que pode ser antigo ou nem existir.</p>
+    <label class="check"><input type="checkbox" name="lights_off"
+           {% if form.get('lights_off', True) %}checked{% endif %}>
+      Apagar as luzes durante a atualização (recomendado: em algumas lâmpadas ESP8266,
+      atualizar com a luz acesa faz o firmware novo ser descartado). No fim, as luzes voltam
+      como estavam.</label>
     <label class="check"><input type="checkbox" name="stop_on_failure"
            {% if form.get('stop_on_failure', stop_on_failure) %}checked{% endif %}>
       Parar no primeiro erro (os demais ficam como "cancelado")</label>

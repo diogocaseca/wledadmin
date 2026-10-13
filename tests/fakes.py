@@ -71,6 +71,10 @@ class FakeDevice:
     ota_fails: bool = False  # responde 500 "Update failed!"
     ota_keeps_version: bool = False  # reinicia, mas continua na versão antiga
     validates_release: bool = False  # comportamento do 16.x
+    # Como algumas lâmpadas ESP8266: com a luz acesa, o firmware novo é descartado no reboot
+    ota_fails_when_lit: bool = False
+    # Estado aplicado no boot (None = mantém o estado atual)
+    boot_state: dict[str, Any] | None = None
     firmware_uploads: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -87,6 +91,8 @@ class FakeDevice:
         self.rebooting = self.reboot_requests
         self.unlocked = self.pin is None
         self.info["uptime"] = 2
+        if self.boot_state is not None:
+            self.state = copy.deepcopy(self.boot_state)
 
 
 class FakeWLEDNetwork:
@@ -227,7 +233,8 @@ class FakeWLEDNetwork:
             return httpx.Response(500, text="<html>Update failed! Firmware release name "
                                             "mismatch</html>")
         dev.firmware_uploads.append(part.get_filename())
-        if meta and not dev.ota_keeps_version:
+        lit = dev.ota_fails_when_lit and dev.state.get("on")
+        if meta and not dev.ota_keeps_version and not lit:
             dev.info["ver"] = meta.wled_version
             dev.info["release"] = meta.release_name
         dev.reboot()

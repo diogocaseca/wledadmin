@@ -267,13 +267,19 @@ dispositivos da atualização. Nenhum dos dois é guardado.
 - Para cada dispositivo:
   1. backup de `cfg.json` e `presets.json`, se a opção **"Fazer backup antes de atualizar"**
      estiver marcada (padrão). Se o backup falhar, aquele dispositivo não é atualizado;
-  2. conferência do arquivo e do MAC;
-  3. trava de OTA desligada, se estiver ligada;
-  4. PIN, se informado;
-  5. envio;
-  6. espera do reboot (até 3 min);
-  7. **conferência de que a versão mudou para a esperada**;
-  8. trava de OTA religada, se tiver sido desligada.
+  2. luzes apagadas, se a opção **"Apagar as luzes durante a atualização"** estiver
+     marcada (padrão). Em algumas lâmpadas ESP8266, atualizar com a luz acesa faz o ESP
+     descartar o firmware novo no reboot;
+  3. conferência do arquivo e do MAC;
+  4. trava de OTA desligada, se estiver ligada;
+  5. PIN, se informado;
+  6. envio;
+  7. espera do reboot (até 3 min);
+  8. **conferência de que a versão mudou para a esperada**;
+  9. trava de OTA religada, se tiver sido desligada;
+  10. luzes devolvidas ao estado anterior (ligada/desligada e brilho; o preset ativo é
+      reaplicado). Isso vale também quando a atualização falha. Efeitos e cores avulsos,
+      fora de um preset, não são restaurados.
 - **Parar no primeiro erro** (padrão): os dispositivos restantes ficam como "cancelado".
 - O histórico de cada tentativa fica na página do dispositivo.
 
@@ -383,6 +389,7 @@ curl -u admin:SENHA -X POST http://localhost:8000/api/firmware/run \
 O `run` recalcula o plano no servidor e só executa os dispositivos que estiverem prontos.
 Escolhas manuais vão em `"manual": {"<id>": "<arquivo>"}` e exigem `"confirm_devices": [<id>]`.
 `"backup": false` pula o backup antes de cada dispositivo (padrão `true`).
+`"lights_off": false` mantém as luzes como estão durante a atualização (padrão `true`).
 Para dispositivos com a trava de OTA ligada, envie `"ota_password": "<senha de OTA>"`.
 
 ---

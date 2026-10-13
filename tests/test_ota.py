@@ -27,7 +27,7 @@ async def ota(session_factory, client, registry, store, settings, github):
     svc = OtaService(session_factory, client, registry, store, backups, releases,
                      app_settings, JobManager(), settings,
                      reboot_initial_delay=0, reboot_poll_interval=0.01,
-                     lock_poll_interval=0.01, lock_timeout=0.2)
+                     lock_poll_interval=0.01, lock_timeout=0.2, preset_settle=0)
     yield svc
     await releases.close()
 
@@ -362,3 +362,69 @@ async def test_ota_lock_left_open_when_device_disappears(ota, network, registry,
     dev.reboot_requests = 0
     assert await ota.relock_ota(device, None, item) is True
     assert dev.ota_lock is True and "ota_relock_pending" not in item.data
+
+
+# ---- luzes apagadas durante a atualização ---------------------------------------------
+
+
+async def test_lights_off_fixes_lit_bulb_and_restores_state(ota, network, registry, store):
+    """O caso da lâmpada: com a luz acesa o firmware novo era descartado."""
+    dev, device = await add(network, registry, store, INFO_014, "10.0.0.1",
+                            info={"ver": "0.15.4", "release": "ESP8266"},
+                            ota_fails_when_lit=True,
+                            boot_state={"on": True, "bri": 255, "ps": -1})
+    dev.state.update({"on": True, "bri": 90, "ps": 3})
+    plans = await ota.plan_release([device], await release(ota, "v16.0.1"))
+
+    lit = ota.run(plans, pin=None, stop_on_failure=True, title="t", lights_off=False)
+    await ota._jobs.wait(lit)
+    assert lit.items[0].status is ItemStatus.FAILED
+    assert "continua na 0.15.4" in lit.items[0].message
+
+    # o reboot da tentativa anterior aplicou o estado de boot; o usuário volta ao preset 3
+    dev.state.update({"on": True, "bri": 90, "ps": 3})
+    job = ota.run(plans, pin=None, stop_on_failure=True, title="t")  # padrão: apaga
+    await ota._jobs.wait(job)
+    item = job.items[0]
+    assert item.status is ItemStatus.OK, item.message
+    assert dev.info["ver"] == "16.0.1"
+    assert "Apagando as luzes durante a atualização" in item.steps
+    assert "Luzes acesas de novo (preset 3)" in item.steps
+    # depois do boot (255, sem preset) volta ao que era: preset 3 e brilho 90
+    assert dev.state["on"] is True and dev.state["bri"] == 90 and dev.state["ps"] == 3
+    off = [p for p in dev.posts if p.get("on") is False]
+    assert off and off[0].get("tt") == 0
+
+
+async def test_lights_stay_off_if_they_were_off(ota, network, registry, store):
+    dev, device = await add(network, registry, store, INFO_16, "10.0.0.3",
+                            info={"ver": "0.15.4"}, boot_state={"on": True, "bri": 128})
+    dev.state["on"] = False
+    job = await run_and_wait(ota, await ota.plan_release([device],
+                                                         await release(ota, "v16.0.1")))
+    item = job.items[0]
+    assert item.status is ItemStatus.OK
+    assert "As luzes já estavam apagadas" in item.steps
+    assert dev.state["on"] is False, "o boot acendeu, mas devolvemos apagado"
+
+
+async def test_lights_restored_after_failure(ota, network, registry, store):
+    dev, device = await add(network, registry, store, INFO_16, "10.0.0.3",
+                            info={"ver": "0.15.4"}, ota_fails=True)
+    dev.state.update({"on": True, "bri": 77, "ps": -1})
+    job = await run_and_wait(ota, await ota.plan_release([device],
+                                                         await release(ota, "v16.0.1")))
+    item = job.items[0]
+    assert item.status is ItemStatus.FAILED and "recusou" in item.message
+    assert dev.state["on"] is True and dev.state["bri"] == 77
+    assert "Luzes acesas de novo" in item.steps
+
+
+async def test_lights_off_failure_aborts_before_upload(ota, network, registry, store):
+    dev, device = await add(network, registry, store, INFO_16, "10.0.0.3",
+                            info={"ver": "0.15.4"})
+    plans = await ota.plan_release([device], await release(ota, "v16.0.1"))
+    dev.offline = True
+    job = await run_and_wait(ota, plans)
+    assert job.items[0].status is ItemStatus.FAILED
+    assert dev.firmware_uploads == []

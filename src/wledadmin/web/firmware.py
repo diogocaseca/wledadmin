@@ -47,6 +47,7 @@ class RunRequest(PlanRequest):
     stop_on_failure: bool | None = None
     backup: bool = True  # backup de cfg.json/presets.json antes de cada dispositivo
     ota_password: str | None = None  # só para dispositivos com a trava de OTA ligada
+    lights_off: bool = True  # apaga as luzes durante a atualização e devolve no fim
 
 
 def _plan_request_from(params: ImmutableMultiDict) -> PlanRequest:
@@ -210,7 +211,8 @@ async def plan_page_post(request: Request, services: ServicesDep, username: Admi
         form={"confirm_devices": {int(v) for v in form.getlist("confirm_device")
                                   if v.isdigit()},
               "stop_on_failure": form.get("stop_on_failure") == "on",
-              "backup": form.get("backup") == "on"},
+              "backup": form.get("backup") == "on",
+              "lights_off": form.get("lights_off") == "on"},
     )
 
 
@@ -227,16 +229,19 @@ async def run_page(request: Request, services: ServicesDep, username: AdminDep):
         stop_on_failure=form.get("stop_on_failure") == "on",
         backup=form.get("backup") == "on",
         ota_password=(form.get("ota_password") or None),
+        lights_off=form.get("lights_off") == "on",
     )
     title, _, plans = await build_plan(services, req)
     if errors := confirmation_errors(req, plans):
         return await _render_plan(
             request, services, username, req, errors=errors, status_code=400,
             form={"confirm_devices": set(req.confirm_devices),
-                  "stop_on_failure": req.stop_on_failure, "backup": req.backup},
+                  "stop_on_failure": req.stop_on_failure, "backup": req.backup,
+                  "lights_off": req.lights_off},
         )
     job = services.ota.run(plans, pin=req.pin, stop_on_failure=bool(req.stop_on_failure),
-                           title=title, backup=req.backup, ota_password=req.ota_password)
+                           title=title, backup=req.backup, ota_password=req.ota_password,
+                           lights_off=req.lights_off)
     return redirect(request, f"/jobs/{job.id}")
 
 
@@ -311,5 +316,6 @@ async def api_run(body: RunRequest, services: ServicesDep):
     if stop is None:
         stop = services.app_settings.get(OTA_STOP_ON_FAILURE)
     job = services.ota.run(plans, pin=body.pin, stop_on_failure=stop, title=title,
-                           backup=body.backup, ota_password=body.ota_password)
+                           backup=body.backup, ota_password=body.ota_password,
+                           lights_off=body.lights_off)
     return {"job_id": job.id, "title": job.title}

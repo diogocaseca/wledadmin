@@ -26,6 +26,7 @@ def fw_client(settings, network, github):
         app.state.services.ota._reboot_poll_interval = 0.01
         app.state.services.ota._lock_poll_interval = 0.01
         app.state.services.ota._lock_timeout = 0.2
+        app.state.services.ota._preset_settle = 0
         yield tc
 
 
@@ -211,3 +212,29 @@ def test_recovery_offers_relock(fw_client, network):
     assert r.headers["location"].endswith("relock=ok") and dev.ota_lock is True
     page = fw_client.get(r.headers["location"], headers=ADMIN).text
     assert "Trava de OTA religada" in page and "Religar trava de OTA" not in page
+
+
+def test_lights_off_checkbox(fw_client, network):
+    dev, dev_id = add(fw_client, network, INFO_16, "192.168.1.52", info={"ver": "0.15.4"},
+                      ota_fails_when_lit=True)
+    page = fw_client.get(f"/firmware/plan?tag=v16.0.1&device_ids={dev_id}", headers=ADMIN).text
+    assert 'name="lights_off"' in page and "checked" in page.split('name="lights_off"')[1][:60]
+    form = {"tag": "v16.0.1", "device_ids": str(dev_id), "confirm": "on",
+            "confirm_text": "atualizar"}
+    # caixa desmarcada (ausente no formulário): a lâmpada acesa descarta o firmware
+    r = fw_client.post("/firmware/run", data=form, headers=H, follow_redirects=False)
+    job = wait_job(fw_client, int(r.headers["location"].rsplit("/", 1)[1]))
+    assert job["items"][0]["status"] == "failed"
+    # marcada: funciona
+    r = fw_client.post("/firmware/run", data={**form, "lights_off": "on"}, headers=H,
+                       follow_redirects=False)
+    job = wait_job(fw_client, int(r.headers["location"].rsplit("/", 1)[1]))
+    assert job["items"][0]["status"] == "ok" and dev.info["ver"] == "16.0.1"
+
+
+def test_api_lights_off_defaults_to_true(fw_client, network):
+    dev, dev_id = add(fw_client, network, INFO_16, "192.168.1.52", info={"ver": "0.15.4"},
+                      ota_fails_when_lit=True)
+    r = fw_client.post("/api/firmware/run", headers=ADMIN, json={
+        "tag": "v16.0.1", "device_ids": [dev_id], "confirm": True, "confirm_text": "atualizar"})
+    assert wait_job(fw_client, r.json()["job_id"])["items"][0]["status"] == "ok"
