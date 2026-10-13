@@ -71,7 +71,11 @@ Ingress: o middleware prefixa `root_path` **e** `path` (o Starlette 1.x espera o
 com o `root_path`), e o login Basic e a checagem de origem são dispensados. Toda URL
 interna em template usa `{{ root }}/...` (context processor). **Não use `url_for` em
 templates**: ele gera URL absoluta com o host interno do proxy, inacessível ao navegador.
-Redirecionamentos usam `ingress.redirect(request, path)`. `tests/test_ingress.py` varre as
+Redirecionamentos usam `ingress.redirect(request, path)`. No App, o `wledadmin serve`
+escuta em dois sockets no mesmo servidor uvicorn (`cli.open_listeners`): `WLEDADMIN_PORT`
+(acesso direto, 0 = desligado) e `WLEDADMIN_INGRESS_PORT`; com porta de Ingress definida, o
+middleware decide pela porta local (`scope["server"]`): na do Ingress só o proxy do HA entra,
+na direta o cabeçalho é ignorado. `tests/test_ingress.py` varre as
 páginas atrás de URLs sem prefixo.
 
 **HTMX.** `hx-target` é herdado do elemento pai: elementos com polling dentro de um

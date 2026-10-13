@@ -106,3 +106,83 @@ def test_direct_access_still_requires_current_password(app_client):
                         data={"new_username": "x", "new_password": "s3nh4-forte",
                               "confirm_password": "s3nh4-forte"})
     assert r.status_code == 400 and "senha atual incorreta" in r.text
+
+
+
+# ---- modo App do HA: porta exclusiva do Ingress ---------------------------------------
+
+INGRESS_PORT = 62123
+
+
+def two_port_client(settings, network, *, port, ip=HA_IP, enabled=True):
+    """Simula uma conexão chegando na porta local `port` (scope["server"])."""
+    settings.ingress = enabled
+    settings.ingress_port = INGRESS_PORT
+    app = create_app(settings, start_background=False, wled_transport=network.transport(),
+                     github_transport=standard_github().transport())
+    return TestClient(app, base_url=f"http://homeassistant.local:{port}", client=(ip, 50000))
+
+
+def test_two_ports_ingress_port_accepts_only_proxy(settings, network):
+    with two_port_client(settings, network, port=INGRESS_PORT) as tc:
+        r = tc.get("/", headers=INGRESS)
+        assert r.status_code == 200 and f'href="{PREFIX}/firmware"' in r.text
+        r = tc.get("/")  # proxy sem cabeçalho
+        assert r.status_code == 403 and "reservada ao painel" in r.text
+    with two_port_client(settings, network, port=INGRESS_PORT, ip="192.168.1.10") as tc:
+        r = tc.get("/", headers={**INGRESS, **ADMIN})  # nem com login
+        assert r.status_code == 403 and "reservada ao painel" in r.text
+        assert tc.get("/healthz").status_code == 403
+
+
+def test_two_ports_direct_port_never_ingress(settings, network):
+    with two_port_client(settings, network, port=8000) as tc:
+        # mesmo vindo do IP do proxy com o cabeçalho: na porta direta exige login
+        assert tc.get("/", headers=INGRESS).status_code == 401
+        r = tc.get("/", headers={**INGRESS, **ADMIN})
+        assert r.status_code == 200 and PREFIX not in r.text
+        assert tc.get("/healthz").status_code == 200
+
+
+def test_two_ports_ingress_disabled(settings, network):
+    with two_port_client(settings, network, port=INGRESS_PORT, enabled=False) as tc:
+        r = tc.get("/", headers=INGRESS)
+        assert r.status_code == 403 and "desativado" in r.text
+
+
+# ---- abertura das portas (cli) --------------------------------------------------------
+
+
+def test_open_listeners(settings):
+    import socket
+
+    from wledadmin.cli import open_listeners
+
+    settings.host = "127.0.0.1"
+    settings.port = 0
+    settings.ingress_port = None
+    with pytest.raises(SystemExit, match="Nenhuma porta"):
+        open_listeners(settings)
+
+    busy = socket.socket()
+    busy.bind(("127.0.0.1", 0))
+    busy.listen()
+    taken = busy.getsockname()[1]
+    try:
+        settings.ingress_port = taken
+        with pytest.raises(SystemExit, match=f"porta {taken} .*painel do Home Assistant"):
+            open_listeners(settings)
+    finally:
+        busy.close()
+
+    free = socket.socket()
+    free.bind(("127.0.0.1", 0))
+    p1 = free.getsockname()[1]
+    free.close()
+    settings.port, settings.ingress_port = p1, None
+    listeners = open_listeners(settings)
+    try:
+        assert [(n, s.getsockname()[1]) for n, s in listeners] == [("acesso direto", p1)]
+    finally:
+        for _, s in listeners:
+            s.close()

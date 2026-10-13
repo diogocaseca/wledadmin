@@ -27,42 +27,84 @@ DISABLED_PAGE = """<!doctype html><html lang="pt-BR"><meta charset="utf-8">
 <title>wledadmin</title>
 <body style="font:15px system-ui,sans-serif;max-width:560px;margin:48px auto;padding:0 16px">
 <h1 style="font-size:20px">Acesso pelo painel do Home Assistant desativado</h1>
-<p>O Ingress está desligado nas opções do app wledadmin. Use o acesso direto pela porta do
-wledadmin (por padrão <code>http://&lt;endereço-do-home-assistant&gt;:8000</code>), com o
-usuário e a senha do wledadmin, ou ligue a opção <strong>ingress</strong> na aba
-Configuração do app.</p></body></html>"""
+<p>O Ingress está desligado nas opções do app WLED Admin. Use o acesso direto
+(<code>http://&lt;endereço-do-home-assistant&gt;:&lt;porta&gt;</code>, com a porta da seção
+<strong>Rede</strong> do app, padrão 8000) com o usuário e a senha do WLED Admin, ou ligue
+a opção <strong>ingress</strong> na aba Configuração do app.</p></body></html>"""
+
+
+ONLY_PANEL_PAGE = """<!doctype html><html lang="pt-BR"><meta charset="utf-8">
+<title>wledadmin</title>
+<body style="font:15px system-ui,sans-serif;max-width:560px;margin:48px auto;padding:0 16px">
+<h1 style="font-size:20px">Porta reservada ao painel do Home Assistant</h1>
+<p>Esta porta só atende o painel do WLED Admin na barra lateral do Home Assistant. Para
+acesso direto, use a porta configurada na seção <strong>Rede</strong> do app.</p>
+</body></html>"""
 
 
 class IngressMiddleware:
-    def __init__(self, app: ASGIApp, *, enabled: bool, proxy_ip: str) -> None:
+    """Decide, por requisição, se ela veio pelo Ingress do HA.
+
+    Com `ingress_port` (App do HA): a porta do Ingress só aceita o proxy do HA; na porta
+    de acesso direto o cabeçalho é sempre ignorado. Sem `ingress_port` (uma porta só):
+    vale a regra de origem + cabeçalho.
+    """
+
+    def __init__(self, app: ASGIApp, *, enabled: bool, proxy_ip: str,
+                 ingress_port: int | None = None) -> None:
         self.app = app
         self.enabled = enabled
         self.proxy_ip = proxy_ip
+        self.ingress_port = ingress_port
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] in ("http", "websocket"):
-            raw = next((v for k, v in scope["headers"] if k == b"x-ingress-path"), None)
-            client = scope.get("client")
-            if raw is not None and client and client[0] == self.proxy_ip:
-                if not self.enabled:
-                    if scope["type"] == "http":
-                        await HTMLResponse(DISABLED_PAGE, status_code=403)(scope, receive, send)
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+        raw = next((v for k, v in scope["headers"] if k == b"x-ingress-path"), None)
+        client = scope.get("client")
+        from_proxy = bool(client) and client[0] == self.proxy_ip
+        server = scope.get("server")
+        on_ingress_port = (self.ingress_port is not None and server is not None
+                           and server[1] == self.ingress_port)
+
+        if self.ingress_port is not None and not on_ingress_port:
+            # Porta de acesso direto: nunca é Ingress, venha o cabeçalho de onde vier.
+            await self.app(scope, receive, send)
+            return
+
+        if on_ingress_port and not (from_proxy and raw is not None):
+            log.warning("Porta do Ingress acessada fora do proxy do HA (origem %s)", client)
+            await self._reply(scope, receive, send, ONLY_PANEL_PAGE)
+            return
+
+        if raw is not None and from_proxy:
+            if not self.enabled:
+                await self._reply(scope, receive, send, DISABLED_PAGE)
+                return
+            prefix = raw.decode("latin-1").rstrip("/")
+            if not _PREFIX_RE.match(prefix):
+                log.warning("X-Ingress-Path inesperado recusado: %r", prefix)
+                if on_ingress_port:
+                    await self._reply(scope, receive, send, ONLY_PANEL_PAGE)
                     return
-                prefix = raw.decode("latin-1").rstrip("/")
-                if not _PREFIX_RE.match(prefix):
-                    log.warning("X-Ingress-Path inesperado ignorado: %r", prefix)
-                else:
-                    # O Starlette espera que `path` já inclua o `root_path` (como o uvicorn
-                    # faz com --root-path); o Supervisor entrega o caminho sem o prefixo.
-                    scope["root_path"] = prefix
-                    scope["path"] = prefix + scope["path"]
-                    if scope.get("raw_path") is not None:
-                        scope["raw_path"] = prefix.encode() + scope["raw_path"]
-                    scope.setdefault("state", {})["ingress"] = True
-            elif raw is not None:
-                # Cabeçalho vindo de fora do proxy do HA: não é confiável, ignoramos.
-                log.debug("X-Ingress-Path ignorado (origem %s)", client)
+            else:
+                # O Starlette espera que `path` já inclua o `root_path` (como o uvicorn
+                # faz com --root-path); o Supervisor entrega o caminho sem o prefixo.
+                scope["root_path"] = prefix
+                scope["path"] = prefix + scope["path"]
+                if scope.get("raw_path") is not None:
+                    scope["raw_path"] = prefix.encode() + scope["raw_path"]
+                scope.setdefault("state", {})["ingress"] = True
+        elif raw is not None:
+            # Cabeçalho vindo de fora do proxy do HA: não é confiável, ignoramos.
+            log.debug("X-Ingress-Path ignorado (origem %s)", client)
         await self.app(scope, receive, send)
+
+    @staticmethod
+    async def _reply(scope: Scope, receive: Receive, send: Send, page: str) -> None:
+        if scope["type"] == "http":
+            await HTMLResponse(page, status_code=403)(scope, receive, send)
 
 
 def is_ingress(scope_or_request: Scope | Request) -> bool:

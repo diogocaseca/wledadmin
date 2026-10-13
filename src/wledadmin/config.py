@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # Servidor
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = 8000  # acesso direto; 0 = desligado (só com ingress_port)
     log_level: str = "INFO"
 
     # Persistência
@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     # Ingress do Home Assistant (quando roda como app do HA). Desligado fora do HA.
     ingress: bool = False
     ingress_proxy_ip: str = "172.30.32.2"
+    # Porta exclusiva do Ingress (definida pelo App do HA). Com ela, o Ingress só é
+    # aceito nessa porta e o acesso direto fica em `port` (0 = acesso direto desligado).
+    ingress_port: int | None = None
 
     # Firmware (OTA). O token é opcional: sem ele a API do GitHub limita a 60 req/h,
     # o que basta porque a lista de releases fica em cache.

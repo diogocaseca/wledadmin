@@ -51,7 +51,10 @@ def create_app(
     app.add_middleware(SameOriginMiddleware)
     # Por último = mais externo: define root_path/estado antes da checagem de origem.
     app.add_middleware(
-        IngressMiddleware, enabled=settings.ingress, proxy_ip=settings.ingress_proxy_ip
+        IngressMiddleware,
+        enabled=settings.ingress,
+        proxy_ip=settings.ingress_proxy_ip,
+        ingress_port=settings.ingress_port,
     )
     # Arquivos estáticos (htmx, css) são públicos: não contêm nada sensível.
     app.mount(

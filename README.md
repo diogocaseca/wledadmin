@@ -59,8 +59,9 @@ uv run ruff check src tests
 
 O wledadmin pode ser instalado como **App** do Home Assistant OS/Supervised pelo
 repositório [diogocaseca/wledadmin-ha](https://github.com/diogocaseca/wledadmin-ha). O App
-abre na barra lateral do HA (Ingress, sem login extra) e também pela porta 8000 (com o login
-do wledadmin). Veja as instruções naquele repositório.
+abre na barra lateral do HA (Ingress, sem login extra, numa porta própria escolhida pelo HA)
+e também pelo acesso direto (com o login do wledadmin, porta 8000 configurável na seção Rede
+do App, ou desligado). Veja as instruções naquele repositório.
 
 Fora do App, o suporte a Ingress fica desligado. Ele é controlado por
 `WLEDADMIN_INGRESS=true`. Com ele ligado, uma requisição só é tratada como Ingress (sem
@@ -309,7 +310,7 @@ Veja [.env.example](.env.example). As principais:
 
 | Variável | Padrão | Descrição |
 |---|---|---|
-| `WLEDADMIN_PORT` | `8000` | Porta HTTP |
+| `WLEDADMIN_PORT` | `8000` | Porta HTTP do acesso direto (`0` = desligado, só com `WLEDADMIN_INGRESS_PORT`) |
 | `WLEDADMIN_DATA_DIR` | `./data` (`/data` no Docker) | Banco SQLite e dados futuros |
 | `WLEDADMIN_POLL_INTERVAL` | `10` | Segundos entre rodadas de polling |
 | `WLEDADMIN_POLL_CONCURRENCY` | `16` | Requisições simultâneas |
@@ -320,6 +321,7 @@ Veja [.env.example](.env.example). As principais:
 | `WLEDADMIN_SCAN_SUBNETS` | vazio | Faixas padrão da varredura, ex.: `192.168.1.0/24` |
 | `WLEDADMIN_INGRESS` | `false` | Aceita o Ingress do Home Assistant (ligado pelo App) |
 | `WLEDADMIN_INGRESS_PROXY_IP` | `172.30.32.2` | IP de onde o Supervisor do HA faz o proxy do Ingress |
+| `WLEDADMIN_INGRESS_PORT` | vazio | Porta exclusiva do Ingress (definida pelo App do HA); nela só o proxy do HA é aceito |
 | `WLEDADMIN_GITHUB_TOKEN` | vazio | Token do GitHub (opcional; só leitura de repositórios públicos) |
 | `WLEDADMIN_OTA_UPLOAD_TIMEOUT` | `240` | Tempo máximo do envio de firmware (s) |
 | `WLEDADMIN_OTA_REBOOT_TIMEOUT` | `180` | Espera pelo dispositivo após o OTA (s) |
