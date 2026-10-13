@@ -128,6 +128,7 @@ class DeviceInfo(_Lenient):
     uptime: OptInt = None
     freeheap: OptInt = None
     psram: OptInt = None
+    flash: OptInt = None  # MB; ausente em firmwares antigos
     fxcount: OptInt = None
     palcount: OptInt = None
     ws: OptInt = None

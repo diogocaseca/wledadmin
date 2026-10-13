@@ -27,6 +27,29 @@
 </section>
 
 <section class="card">
+  <h1>Atualização de firmware</h1>
+  {% if firmware_saved %}
+  <p class="flash success">Configurações de firmware salvas.</p>
+  {% elif firmware_error %}
+  <p class="flash error">{{ firmware_error }}</p>
+  {% endif %}
+  <form method="post" action="/settings/firmware" class="stack">
+    <label>Repositório no GitHub
+      <input name="ota_repo" value="{{ ota_repo }}" required pattern="[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+">
+      <span class="muted small">Padrão: wled/WLED. Dispositivos 16.x de outro repositório são bloqueados.</span>
+    </label>
+    <label class="check"><input type="checkbox" name="ota_prereleases" value="true" {% if ota_prereleases %}checked{% endif %}>
+      Mostrar versões beta (builds nightly nunca aparecem)</label>
+    <label class="check"><input type="checkbox" name="ota_stop_on_failure" value="true" {% if ota_stop_on_failure %}checked{% endif %}>
+      Parar no primeiro erro (padrão ao atualizar vários)</label>
+    <span class="muted small">
+      Token do GitHub: {% if github_token_set %}configurado{% else %}não configurado (opcional; defina WLEDADMIN_GITHUB_TOKEN para mais de 60 consultas/hora){% endif %}.
+    </span>
+    <button type="submit">Salvar</button>
+  </form>
+</section>
+
+<section class="card">
   <h1>Conta de administrador</h1>
   {% if account_saved %}
   <p class="flash success">

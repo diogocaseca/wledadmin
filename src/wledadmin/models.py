@@ -120,3 +120,27 @@ class AppSetting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(Text)
+
+
+class OtaUpdate(Base):
+    """Histórico permanente de cada etapa de atualização de firmware."""
+
+    __tablename__ = "ota_updates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    device_id: Mapped[int | None] = mapped_column(
+        ForeignKey("devices.id", ondelete="SET NULL"), index=True
+    )
+    device_mac: Mapped[str] = mapped_column(String(12), index=True)
+    device_name: Mapped[str] = mapped_column(String(255))
+    from_version: Mapped[str | None] = mapped_column(String(64))
+    to_version: Mapped[str | None] = mapped_column(String(64))
+    release_name: Mapped[str | None] = mapped_column(String(64))
+    file_name: Mapped[str] = mapped_column(String(255))
+    source: Mapped[str] = mapped_column(String(16))  # github | custom
+    sha256: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16))  # ok | failed
+    message: Mapped[str | None] = mapped_column(Text)
+    steps: Mapped[str] = mapped_column(Text)  # JSON: lista de etapas
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    finished_at: Mapped[datetime] = mapped_column(UTCDateTime)

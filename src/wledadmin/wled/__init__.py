@@ -4,6 +4,7 @@ from .errors import (
     WLEDBadResponse,
     WLEDError,
     WLEDHTTPError,
+    WLEDOtaLocked,
     WLEDTimeout,
     WLEDUnreachable,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "WLEDClient",
     "WLEDError",
     "WLEDHTTPError",
+    "WLEDOtaLocked",
     "WLEDTimeout",
     "WLEDUnreachable",
     "build_http_client",

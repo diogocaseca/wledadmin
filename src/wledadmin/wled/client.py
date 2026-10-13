@@ -9,6 +9,8 @@ Referência: https://kno.wled.ge/interfaces/json-api/ e wled00/json.cpp.
 from __future__ import annotations
 
 import asyncio
+import html
+import re
 from typing import Any
 
 import httpx
@@ -18,6 +20,7 @@ from .errors import (
     WLEDBadResponse,
     WLEDError,
     WLEDHTTPError,
+    WLEDOtaLocked,
     WLEDTimeout,
     WLEDUnreachable,
 )
@@ -195,6 +198,35 @@ class WLEDClient:
             raise WLEDHTTPError(resp.status_code, f"{host}: upload HTTP {resp.status_code}")
         return resp.text.strip()
 
+    async def upload_firmware(
+        self, host: str, filename: str, content: bytes, *, timeout: float = 240.0
+    ) -> str:
+        """POST /update (multipart, campo "update", como o update.htm do WLED).
+
+        Nunca envia "skipValidation": no 16.x o próprio dispositivo confere o release.
+        """
+        files = {"update": (filename, content, "application/octet-stream")}
+        try:
+            resp = await self._http.post(
+                f"http://{host}/update",
+                files=files,
+                timeout=httpx.Timeout(timeout, connect=5.0),
+            )
+        except httpx.TimeoutException as e:
+            raise WLEDTimeout(f"{host}: timeout durante o envio do firmware") from e
+        except httpx.TransportError as e:
+            raise WLEDUnreachable(f"{host}: {describe_transport_error(e)}") from e
+        text = page_text(resp.text)
+        if resp.status_code == 401:
+            if "OTA" in text:
+                raise WLEDOtaLocked(f"{host}: OTA bloqueado nas configurações de segurança")
+            if "subnet" in text:
+                raise WLEDAuthRequired(f"{host}: o dispositivo só aceita OTA da própria sub-rede")
+            raise WLEDAuthRequired(f"{host}: PIN de configurações necessário ou incorreto")
+        if resp.status_code >= 400:
+            raise WLEDHTTPError(resp.status_code, f"{host}: {text or f'HTTP {resp.status_code}'}")
+        return text
+
     async def unlock_settings(self, host: str, pin: str) -> None:
         """Desbloqueia as configurações com o PIN. O WLED não diz se o PIN estava certo;
         um PIN errado aparece como 401 na operação seguinte."""
@@ -240,6 +272,13 @@ class WLEDClient:
             f"{host}: não voltou em {timeout:.0f} s"
             + (f" (último erro: {last_error})" if last_error else "")
         )
+
+
+def page_text(body: str, limit: int = 300) -> str:
+    """Texto legível de uma página de mensagem do WLED (serveMessage)."""
+    body = re.sub(r"(?is)<(script|style).*?</\1>", " ", body)
+    text = html.unescape(re.sub(r"<[^>]+>", " ", body))
+    return re.sub(r"\s+", " ", text).strip()[:limit]
 
 
 def describe_transport_error(e: Exception) -> str:

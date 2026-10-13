@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import Settings
 from .services.container import Services
-from .web import api, backups, pages
+from .web import api, backups, firmware, pages
 from .web.security import SameOriginMiddleware
 
 
@@ -21,8 +21,9 @@ def create_app(
     *,
     start_background: bool = True,
     wled_transport: httpx.AsyncBaseTransport | None = None,
+    github_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
-    """`start_background=False` e `wled_transport` existem para os testes."""
+    """`start_background=False` e os transportes existem para os testes."""
     settings = settings or Settings()
     logging.basicConfig(
         level=settings.log_level.upper(),
@@ -33,7 +34,9 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        services = await Services.create(settings, transport=wled_transport)
+        services = await Services.create(
+            settings, transport=wled_transport, github_transport=github_transport
+        )
         app.state.services = services
         if start_background:
             await services.start_background()
@@ -55,5 +58,7 @@ def create_app(
 
     app.include_router(pages.router)
     app.include_router(backups.router)
+    app.include_router(firmware.router)
+    app.include_router(firmware.api_router)
     app.include_router(api.router)
     return app

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Plano de atualização · wledadmin{% endblock %}
+{% block content %}
+<p><a href="/firmware">← Firmware</a></p>
+
+<form method="post" action="/firmware/run">
+{% if req.custom_id %}
+  <input type="hidden" name="custom" value="{{ req.custom_id }}">
+  <input type="hidden" name="name" value="{{ req.custom_name }}">
+{% else %}
+  <input type="hidden" name="tag" value="{{ req.tag }}">
+{% endif %}
+{% for p in plans %}<input type="hidden" name="device_ids" value="{{ p.device.id }}">{% endfor %}
+
+<section class="card wide">
+  <h1>{{ title }}</h1>
+  {% if release %}
+  <p class="muted small"><a href="{{ release.html_url }}" target="_blank" rel="noopener">Notas da versão {{ release.version_str }} ↗</a></p>
+  {% endif %}
+  {% if errors %}
+  <div class="flash error block"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
+  {% endif %}
+
+  <div class="table-wrap">
+  <table class="plan">
+    <thead><tr><th>Dispositivo</th><th>Situação</th><th>Versões</th><th>Arquivo</th></tr></thead>
+    <tbody>
+    {% for p in plans %}
+    <tr class="plan-{{ p.status }}">
+      <td><strong>{{ p.device.name }}</strong>
+          <div class="muted small">{{ p.arch.label }}{% if p.device_release %} · {{ p.device_release }}{% endif %}</div></td>
+      <td>
+        {% if p.status == "ready" %}<span class="badge ok">{{ "reinstalar" if p.reinstall else "pronto" }}</span>
+        {% elif p.status == "manual" %}<span class="badge running">escolher arquivo</span>
+        {% elif p.status == "current" %}<span class="badge">já atualizado</span>
+        {% else %}<span class="badge failed">bloqueado</span>{% endif %}
+      </td>
+      <td class="mono small">{{ p.path if p.steps else (p.current_version or "?") }}</td>
+      <td class="small">
+        {% for s in p.steps %}<div class="mono">{{ s.file_name }}{% if s.image.metadata %} <span class="muted">({{ s.image.metadata.release_name }})</span>{% endif %}</div>{% endfor %}
+        {% if p.candidates %}
+          <select name="manual_{{ p.device.id }}" aria-label="Arquivo para {{ p.device.name }}">
+            <option value="">— escolha —</option>
+            {% for a in p.candidates %}
+            <option value="{{ a.name }}" {% if req.manual.get(p.device.id) == a.name %}selected{% endif %}>{{ a.name }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" formaction="/firmware/plan" formnovalidate class="link">conferir</button>
+        {% endif %}
+        {% if p.status == "current" %}
+          <label class="check small"><input type="checkbox" name="reinstall" value="{{ p.device.id }}"
+                 onchange="this.form.action='/firmware/plan'; this.form.noValidate = true; this.form.submit()"> reinstalar</label>
+        {% elif p.reinstall and not req.custom_id %}
+          <input type="hidden" name="reinstall" value="{{ p.device.id }}">
+        {% endif %}
+        {% for b in p.blockers %}<div class="bad">✕ {{ b }}</div>{% endfor %}
+        {% for w in p.warnings %}<div class="warn-text">⚠ {{ w }}</div>{% endfor %}
+        {% if p.status == "ready" and p.needs_device_confirm %}
+          <label class="check small"><input type="checkbox" name="confirm_device" value="{{ p.device.id }}"
+                 {% if p.device.id in form.get('confirm_devices', ()) %}checked{% endif %}>
+            Conferi que este arquivo é o certo para {{ p.device.name }}</label>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="card wide">
+  {% if runnable %}
+  <h2>Confirmar: {{ runnable }} dispositivo(s)</h2>
+  <ul class="small">
+    <li>Antes de cada dispositivo, o wledadmin faz backup de <code>cfg.json</code> e <code>presets.json</code>; se o backup falhar, aquele dispositivo não é atualizado.</li>
+    <li>Um dispositivo por vez. Cada um reinicia e só é considerado ok quando volta na versão esperada.</li>
+    <li>Não desligue os dispositivos durante a atualização. ESP8266 com arquivo .gz pode levar alguns minutos para voltar.</li>
+  </ul>
+  <div class="stack narrow">
+    <label>PIN de configurações do WLED (só se os dispositivos tiverem)
+      <input type="password" name="pin" inputmode="numeric" autocomplete="off" maxlength="8">
+      <span class="muted small">Usado só nesta operação; não é guardado.</span>
+    </label>
+    <label class="check"><input type="checkbox" name="stop_on_failure"
+           {% if form.get('stop_on_failure', stop_on_failure) %}checked{% endif %}>
+      Parar no primeiro erro (os demais ficam como "cancelado")</label>
+    <label class="check"><input type="checkbox" name="confirm" required>
+      Entendo que os dispositivos vão reiniciar e que um firmware errado pode exigir regravação por USB.</label>
+    <label><span>Digite <strong>{{ confirm_word }}</strong> para confirmar</span>
+      <input name="confirm_text" autocomplete="off" required pattern="[Aa][Tt][Uu][Aa][Ll][Ii][Zz][Aa][Rr]">
+    </label>
+    <button type="submit" class="primary danger-bg">Atualizar {{ runnable }} dispositivo(s)</button>
+  </div>
+  {% else %}
+  <p class="muted">Nenhum dispositivo pronto para atualizar. Resolva os bloqueios, escolha os arquivos ou volte e selecione outra versão.</p>
+  {% endif %}
+</section>
+</form>
+{% endblock %}

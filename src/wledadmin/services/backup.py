@@ -57,6 +57,7 @@ class BackupTrigger(StrEnum):
     SCHEDULED = "scheduled"
     PRE_RESTORE = "pre_restore"
     IMPORT = "import"
+    PRE_OTA = "pre_ota"
 
     @property
     def label(self) -> str:
@@ -65,6 +66,7 @@ class BackupTrigger(StrEnum):
             "scheduled": "agendado",
             "pre_restore": "antes de restaurar",
             "import": "importado",
+            "pre_ota": "antes de atualizar firmware",
         }[self.value]
 
 

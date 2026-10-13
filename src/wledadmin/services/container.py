@@ -18,8 +18,10 @@ from .backup import BackupService
 from .backup_scheduler import BackupScheduler
 from .discovery import DeviceProber, MDNSDiscovery, Scanner
 from .jobs import JobManager
+from .ota import OtaService
 from .poller import Poller
 from .registry import DeviceRegistry
+from .releases import ReleaseService
 from .status_store import StatusStore
 
 log = logging.getLogger(__name__)
@@ -43,11 +45,17 @@ class Services:
     jobs: JobManager
     backups: BackupService
     backup_scheduler: BackupScheduler
+    releases: ReleaseService
+    ota: OtaService
     mdns: MDNSDiscovery | None = None
 
     @classmethod
     async def create(
-        cls, settings: Settings, *, transport: httpx.AsyncBaseTransport | None = None
+        cls,
+        settings: Settings,
+        *,
+        transport: httpx.AsyncBaseTransport | None = None,
+        github_transport: httpx.AsyncBaseTransport | None = None,
     ) -> Services:
         settings.data_dir.mkdir(parents=True, exist_ok=True)
         await run_migrations(settings.db_url)
@@ -82,8 +90,19 @@ class Services:
             sf, client, registry, store, app_settings, on_device_changed=poller.wake
         )
         backup_scheduler = BackupScheduler(backups, registry, store, app_settings)
+        releases = ReleaseService(
+            settings.data_dir,
+            api_url=settings.github_api_url,
+            token=settings.github_token,
+            transport=github_transport,
+        )
+        ota = OtaService(
+            sf, client, registry, store, backups, releases, app_settings, jobs, settings,
+            on_device_changed=poller.wake,
+        )
         return cls(settings, engine, sf, http, client, registry, store, poller, prober,
-                   scanner, actions, auth, app_settings, jobs, backups, backup_scheduler)
+                   scanner, actions, auth, app_settings, jobs, backups, backup_scheduler,
+                   releases, ota)
 
     async def start_background(self) -> None:
         self.poller.start()
@@ -105,4 +124,5 @@ class Services:
         await self.backup_scheduler.stop()
         await self.poller.stop()
         await self.http.aclose()
+        await self.releases.close()
         await self.engine.dispose()

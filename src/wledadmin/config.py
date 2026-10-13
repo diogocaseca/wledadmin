@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     scan_timeout: float = 1.5
     scan_max_hosts: int = 4096
 
+    # Firmware (OTA). O token é opcional: sem ele a API do GitHub limita a 60 req/h,
+    # o que basta porque a lista de releases fica em cache.
+    github_token: str | None = None
+    github_api_url: str = "https://api.github.com"
+    ota_upload_timeout: float = 240.0
+    ota_reboot_timeout: float = 180.0
+
     @cached_property
     def db_url(self) -> str:
         return self.database_url or f"sqlite+aiosqlite:///{self.data_dir / 'wledadmin.db'}"

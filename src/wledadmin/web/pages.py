@@ -11,7 +11,14 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from ..services.actions import ActionKind, BulkAction
-from ..services.app_settings import BACKUP_INTERVAL_HOURS, BACKUP_KEEP, SettingsError
+from ..services.app_settings import (
+    BACKUP_INTERVAL_HOURS,
+    BACKUP_KEEP,
+    OTA_INCLUDE_PRERELEASES,
+    OTA_REPO,
+    OTA_STOP_ON_FAILURE,
+    SettingsError,
+)
 from ..services.auth import CredentialError
 from ..services.discovery import ScanAlreadyRunning
 from . import view
@@ -37,6 +44,10 @@ async def _base_ctx(services, username: str) -> dict:
         "settings": services.settings,
         "backup_interval_hours": services.app_settings.get(BACKUP_INTERVAL_HOURS),
         "backup_keep": services.app_settings.get(BACKUP_KEEP),
+        "ota_repo": services.app_settings.get(OTA_REPO),
+        "ota_prereleases": services.app_settings.get(OTA_INCLUDE_PRERELEASES),
+        "ota_stop_on_failure": services.app_settings.get(OTA_STOP_ON_FAILURE),
+        "github_token_set": bool(services.settings.github_token),
     }
 
 
@@ -183,6 +194,31 @@ async def settings_backup(
         request,
         "settings.html",
         {**ctx, "backup_error": error, "backup_saved": error is None},
+        status_code=400 if error else 200,
+    )
+
+
+@router.post("/settings/firmware", response_class=HTMLResponse)
+async def settings_firmware(
+    request: Request,
+    services: ServicesDep,
+    username: AdminDep,
+    ota_repo: Annotated[str, Form()],
+    ota_prereleases: Annotated[bool, Form()] = False,
+    ota_stop_on_failure: Annotated[bool, Form()] = False,
+):
+    error = None
+    try:
+        await services.app_settings.set(OTA_REPO, ota_repo)
+        await services.app_settings.set(OTA_INCLUDE_PRERELEASES, ota_prereleases)
+        await services.app_settings.set(OTA_STOP_ON_FAILURE, ota_stop_on_failure)
+    except SettingsError as e:
+        error = str(e)
+    ctx = await _base_ctx(services, username)
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        {**ctx, "firmware_error": error, "firmware_saved": error is None},
         status_code=400 if error else 200,
     )
 

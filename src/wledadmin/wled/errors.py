@@ -21,6 +21,10 @@ class WLEDAuthRequired(WLEDError):
     """O dispositivo exigiu autenticação (ex.: settings/OTA protegidos por PIN/senha)."""
 
 
+class WLEDOtaLocked(WLEDError):
+    """O dispositivo está com "OTA lock" ligado (Config → Security & Updates)."""
+
+
 class WLEDHTTPError(WLEDError):
     """Resposta HTTP de erro (4xx/5xx)."""
 

@@ -67,6 +67,30 @@
 </section>
 
 <section class="card wide">
+  <h2>Atualizações de firmware</h2>
+  {% if not ota_history %}
+  <p class="muted">Nenhuma atualização feita pelo wledadmin. <a href="/firmware">Atualizar firmware</a></p>
+  {% else %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Data</th><th>De</th><th>Para</th><th>Arquivo</th><th>Resultado</th></tr></thead>
+    <tbody>
+    {% for u in ota_history %}
+      <tr>
+        <td>{{ u.started_at | dt }}</td>
+        <td>{{ u.from_version or "—" }}</td>
+        <td>{{ u.to_version or "—" }}</td>
+        <td class="mono small" title="SHA-256 {{ u.sha256 }}">{{ u.file_name }}{% if u.source == "custom" %} <span class="muted">(próprio)</span>{% endif %}</td>
+        <td>{% if u.status == "ok" %}<span class="ok">ok</span>{% else %}<span class="bad">falhou</span>: {{ u.message }}{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+
+<section class="card wide">
   <h2>Importar backup</h2>
   <p class="muted small">
     Um <code>cfg.json</code> ou <code>presets.json</code> baixado pela própria interface do WLED

@@ -21,7 +21,14 @@ Home Assistant.
 - Importação de backups baixados pela própria interface do WLED e exportação em `.zip`.
 - Tela de configurações com intervalo do backup automático e retenção.
 
-**Próxima fase (arquitetura já preparada):** OTA em lote.
+**Fase 3:**
+- Atualização de firmware (OTA) em lote a partir dos releases oficiais no GitHub, com
+  escolha automática do arquivo certo para cada dispositivo.
+- Validação própria do binário antes de enviar (chip, família, flash, release, versão
+  mínima): essencial porque o WLED 0.14/0.15 grava qualquer arquivo.
+- Atualização em duas etapas quando o WLED exige uma versão intermediária.
+- Instalação de `.bin` próprio (builds customizados), com as mesmas validações de hardware.
+- Execução sequencial, com backup antes, verificação da versão depois e histórico.
 
 ---
 
@@ -168,10 +175,83 @@ restaurar" no próprio histórico, e a cópia é feita um dispositivo por vez.
 - **Exportar:** o link **Exportar backups (.zip)** na tela principal baixa a versão mais
   recente de cada arquivo de cada dispositivo.
 
+## Atualização de firmware (OTA)
+
+Na tela **Firmware**, escolha a versão e os dispositivos e clique em **Planejar
+atualização**. Nada é enviado nesse passo: o plano mostra, para cada dispositivo, a
+versão atual → alvo, o arquivo escolhido, os avisos e os bloqueios.
+
+### Como o arquivo é escolhido
+
+- **Automático:** o WLED 0.15+ informa o nome do seu build (`release`, ex.: `ESP32`,
+  `ESP02`, `ESP32-S3_8MB_opi`). O wledadmin escolhe `WLED_<versão>_<release>.bin`. `_V4`
+  equivale ao nome sem sufixo, como no próprio WLED, e ESP8266 de 2 MB (`ESP02`) usa o
+  `.bin.gz`.
+- **Manual:** dispositivos 0.14 (que não informam o release), builds `Custom` ou versões
+  que não têm o arquivo correspondente. O plano lista só arquivos da mesma família de chip
+  e exige confirmação por dispositivo.
+- **Duas etapas:** se o firmware alvo declarar uma versão mínima segura (ex.: ESP32
+  clássico precisa estar na 0.15.3+ para ir à 16.x), o wledadmin passa antes pela versão
+  estável mais nova entre as duas.
+
+### Validações antes de enviar
+
+O WLED 0.14/0.15 grava qualquer arquivo recebido em `/update`. Só o 16.x confere o nome
+do release. Por isso o wledadmin analisa o binário antes:
+
+| Verificação | Arquivo automático | Escolha manual / `.bin` próprio |
+|---|---|---|
+| SHA-256 igual ao publicado pelo GitHub | bloqueia | (n/a para `.bin` próprio) |
+| Imagem ESP válida (`0xE9`, gzip válido) | bloqueia | bloqueia |
+| Família (ESP32 × ESP8266) e chip (`chip_id`: ESP32, S2, S3, C3, C6) | bloqueia | bloqueia |
+| Flash do ESP8266 maior que a do dispositivo | bloqueia | bloqueia |
+| Downgrade | bloqueia | bloqueia |
+| Nome do release embutido diferente do dispositivo | bloqueia | aviso |
+| Versão mínima segura não atendida | vira duas etapas | aviso |
+
+Os metadados do WLED (versão, release, versão mínima) estão embutidos nos binários a
+partir da 0.15.3. Em arquivos mais antigos, só as verificações de hardware são possíveis,
+e o plano avisa.
+
+Também bloqueiam: dispositivo offline, **OTA lock** ligado no dispositivo (lido do
+`cfg.json`) e dispositivos 16.x que rodam firmware de **outro repositório** (forks).
+
+### Execução
+
+- Confirmação explícita: marcar a caixa e digitar `atualizar`.
+- **Um dispositivo por vez**, e nenhuma outra operação de escrita (restore, cópia de
+  presets) ao mesmo tempo.
+- Para cada dispositivo:
+  1. backup de `cfg.json` e `presets.json` (se falhar, aquele dispositivo não é atualizado);
+  2. conferência do arquivo e do MAC;
+  3. PIN, se informado;
+  4. envio;
+  5. espera do reboot (até 3 min);
+  6. **conferência de que a versão mudou para a esperada**.
+- **Parar no primeiro erro** (padrão): os dispositivos restantes ficam como "cancelado".
+- O histórico de cada tentativa fica na página do dispositivo.
+
+Downgrade não é permitido: voltar de uma versão nova para uma antiga pode deixar o
+`cfg.json` incompatível. Reinstalar a mesma versão é permitido, marcando "reinstalar" no
+plano.
+
+O envio de bootloader (`/updatebootloader`, só no 16.x) não é feito pelo wledadmin.
+
+### Releases e cache
+
+- A lista de releases vem da API do GitHub e fica em cache por 1 h (há o link "recarregar
+  lista"). Sem token, a API permite 60 consultas por hora. Se o limite for atingido, o
+  wledadmin usa a última lista salva. Para mais consultas, defina
+  `WLEDADMIN_GITHUB_TOKEN`.
+- Builds nightly nunca aparecem. Betas aparecem se a opção estiver ligada em
+  **Configurações**, onde também dá para trocar o repositório (padrão `wled/WLED`).
+- Os binários ficam em `WLEDADMIN_DATA_DIR/firmware/` (as 6 versões usadas mais
+  recentemente) e são conferidos pelo SHA-256 a cada uso.
+
 ## Configuração
 
-O intervalo do backup automático e a retenção ficam na tela **Configurações** (guardados no
-banco). O resto são variáveis de ambiente com prefixo `WLEDADMIN_` (ou estão no `.env`).
+O intervalo do backup automático, a retenção e as opções de firmware ficam na tela
+**Configurações** (guardados no banco). O resto são variáveis de ambiente com prefixo `WLEDADMIN_` (ou estão no `.env`).
 Veja [.env.example](.env.example). As principais:
 
 | Variável | Padrão | Descrição |
@@ -185,6 +265,9 @@ Veja [.env.example](.env.example). As principais:
 | `WLEDADMIN_OFFLINE_POLL_EVERY` | `6` | Offline são consultados a cada N ciclos |
 | `WLEDADMIN_MDNS_ENABLED` | `true` | Liga a descoberta mDNS |
 | `WLEDADMIN_SCAN_SUBNETS` | vazio | Faixas padrão da varredura, ex.: `192.168.1.0/24` |
+| `WLEDADMIN_GITHUB_TOKEN` | vazio | Token do GitHub (opcional; só leitura de repositórios públicos) |
+| `WLEDADMIN_OTA_UPLOAD_TIMEOUT` | `240` | Tempo máximo do envio de firmware (s) |
+| `WLEDADMIN_OTA_REBOOT_TIMEOUT` | `180` | Espera pelo dispositivo após o OTA (s) |
 
 ## API JSON
 
@@ -217,6 +300,20 @@ curl -u admin:SENHA -X POST http://localhost:8000/api/backups/8/copy \
      -H 'content-type: application/json' -d '{"device_ids": [2, 3], "confirm": true}'
 ```
 
+Firmware:
+
+```bash
+curl -u admin:SENHA http://localhost:8000/api/firmware/releases
+curl -u admin:SENHA -X POST http://localhost:8000/api/firmware/plan \
+     -H 'content-type: application/json' -d '{"tag": "v16.0.1", "device_ids": [1, 2]}'
+curl -u admin:SENHA -X POST http://localhost:8000/api/firmware/run \
+     -H 'content-type: application/json' \
+     -d '{"tag": "v16.0.1", "device_ids": [1, 2], "confirm": true, "confirm_text": "atualizar"}'
+```
+
+O `run` recalcula o plano no servidor e só executa os dispositivos que estiverem prontos.
+Escolhas manuais vão em `"manual": {"<id>": "<arquivo>"}` e exigem `"confirm_devices": [<id>]`.
+
 ---
 
 ## Arquitetura
@@ -224,6 +321,7 @@ curl -u admin:SENHA -X POST http://localhost:8000/api/backups/8/copy \
 ```
 src/wledadmin/
 ├── wled/            # ÚNICA camada que fala com o WLED (cliente httpx + schemas tolerantes)
+│   └── firmware.py      # análise de binários: cabeçalho ESP, chip, flash, metadados WLED
 ├── services/
 │   ├── registry.py      # cadastro (SQLite), upsert por MAC, lock por dispositivo
 │   ├── status_store.py  # último status de cada dispositivo, em memória
@@ -234,6 +332,8 @@ src/wledadmin/
 │   ├── backup_scheduler.py  # backup automático
 │   ├── jobs.py          # jobs em segundo plano com progresso por dispositivo
 │   ├── app_settings.py  # configurações editáveis pela tela
+│   ├── releases.py      # API do GitHub, cache de releases e de binários
+│   ├── ota.py           # planejamento e execução das atualizações de firmware
 │   ├── discovery/       # mDNS, varredura e probe comum
 │   └── container.py     # monta e liga/desliga tudo
 ├── web/             # rotas FastAPI, templates Jinja2 + HTMX (sem build step)
@@ -280,18 +380,6 @@ a fase 1 usa polling:
 
 O poller fica isolado em `services/poller.py`. Um modo WS opcional por dispositivo pode
 ser adicionado depois sem mexer na UI nem no cache.
-
-### Preparação para o OTA (fase 3)
-
-- **Jobs:** o `JobManager` já roda operações em segundo plano com etapas por dispositivo,
-  e os jobs "exclusivos" rodam um por vez. É o mesmo modelo que o OTA sequencial vai usar.
-- **Backup antes do OTA:** o gatilho `pre_ota` já está previsto. O OTA vai salvar
-  `cfg.json` e `presets.json` antes de gravar o firmware.
-- **OTA:** a coluna `release` (0.15+) identifica a variante do build e, junto com `arch`,
-  vai servir para escolher o `.bin` correto. O `DeviceRegistry.lock()` já serializa
-  operações por dispositivo, para que backup, OTA e ações em massa não colidam. O
-  conjunto fechado de ações e a ausência de "JSON livre" seguem o mesmo princípio que o
-  OTA vai exigir: confirmação explícita e execução sequencial.
 
 ---
 

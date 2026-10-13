@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Firmware · wledadmin{% endblock %}
+{% block content %}
+{% if error %}<p class="flash error block">{{ error }}</p>{% endif %}
+
+<form method="get" action="/firmware/plan" id="fw-form">
+<section class="card wide">
+  <h1>Atualizar firmware</h1>
+  <p class="muted small">
+    Releases de <a href="https://github.com/{{ repo }}/releases" target="_blank" rel="noopener">{{ repo }}</a>
+    · <a href="/firmware?refresh=1">recarregar lista</a>
+    · repositório e betas em <a href="/settings">Configurações</a>.
+    Nada é enviado nesta etapa: o próximo passo mostra o plano para você revisar.
+  </p>
+  {% if releases_error %}
+    <p class="flash error block">Não consegui listar as versões: {{ releases_error }}</p>
+  {% else %}
+  <label class="inline">Versão alvo
+    <select name="tag" required>
+      {% for r in releases %}
+      <option value="{{ r.tag }}">{{ r.version_str }}{% if r.prerelease %} (beta){% endif %} · {{ r.published_at[:10] }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% if releases %}<a class="small" href="{{ releases[0].html_url }}" target="_blank" rel="noopener">notas da versão mais recente ↗</a>{% endif %}
+  {% endif %}
+</section>
+
+<section class="card wide">
+  <h2>Dispositivos</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr>
+      <th><input type="checkbox" aria-label="Selecionar todos"
+                 onclick="document.querySelectorAll('input[name=device_ids]').forEach(c => { if (!c.disabled) c.checked = this.checked })"></th>
+      <th></th><th>Nome</th><th>IP</th><th>Firmware</th><th>Release</th><th>Arq.</th>
+    </tr></thead>
+    <tbody>
+    {% for d in devices %}
+      {% set st = status[d.id] %}
+      <tr class="{% if st.online is false %}offline{% endif %}">
+        <td><input type="checkbox" name="device_ids" value="{{ d.id }}" form="fw-form"
+                   aria-label="Selecionar {{ d.name }}"></td>
+        <td>{% if st.online is false %}<span class="dot off"></span>{% elif st.online %}<span class="dot on"></span>{% else %}<span class="dot unknown"></span>{% endif %}</td>
+        <td><a href="/devices/{{ d.id }}">{{ d.name }}</a></td>
+        <td class="mono">{{ d.ip }}</td>
+        <td>{{ (st.info.ver if st.info else d.version) or "—" }}</td>
+        <td>{{ (st.info.release if st.info else d.release) or "—" }}</td>
+        <td>{{ d.arch }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty">Nenhum dispositivo cadastrado.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p><button type="submit" class="primary" {% if releases_error %}disabled{% endif %}>Planejar atualização</button></p>
+</section>
+</form>
+
+<section class="card wide">
+  <h2>Instalar um .bin próprio</h2>
+  <p class="muted small">
+    Para builds customizados ou forks. O arquivo passa pelas mesmas validações de hardware
+    (chip, família, flash e downgrade). Divergências de release ou de versão mínima viram
+    avisos. Marque os dispositivos na tabela acima antes de enviar.
+  </p>
+  <form method="post" action="/firmware/custom" enctype="multipart/form-data" class="inline wrap"
+        onsubmit="document.querySelectorAll('#fw-form input[name=device_ids]:checked').forEach(c => { const h = document.createElement('input'); h.type = 'hidden'; h.name = 'device_ids'; h.value = c.value; this.appendChild(h) })">
+    <input type="file" name="file" accept=".bin,.gz" required>
+    <button type="submit">Enviar e planejar</button>
+  </form>
+</section>
+{% endblock %}

@@ -133,12 +133,13 @@ async def device_page(
 ):
     device = await get_device_or_404(services, device_id)
     backups = await services.backups.list_for_mac(device.mac)
+    ota_history = await services.ota.history(device.mac)
     ctx = await _base_ctx(services, username)
     return templates.TemplateResponse(
         request,
         "device.html",
         {**ctx, "device": device, "status": services.store.get(device.id),
-         "backups": backups, "message": message, "error": error,
+         "backups": backups, "ota_history": ota_history, "message": message, "error": error,
          "BackupKind": BackupKind, "BackupTrigger": BackupTrigger},
     )
 
