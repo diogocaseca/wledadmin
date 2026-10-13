@@ -3,6 +3,9 @@ name = "wledadmin"
 version = "0.1.0"
 description = "Painel web self-hosted para administrar vários dispositivos WLED na rede local"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Diogo Caseca" }]
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",

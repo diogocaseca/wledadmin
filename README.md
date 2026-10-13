@@ -196,3 +196,13 @@ ser adicionado depois sem mexer na UI nem no cache.
   operações por dispositivo, para que backup, OTA e ações em massa não colidam. O
   conjunto fechado de ações e a ausência de "JSON livre" seguem o mesmo princípio que o
   OTA vai exigir: confirmação explícita e execução sequencial.
+
+---
+
+## Licença
+
+[MIT](LICENSE) © 2026 Diogo Caseca.
+
+O wledadmin não contém código do WLED (licenciado sob EUPL-1.2): apenas se comunica com
+a API HTTP dos dispositivos. O `htmx.min.js` incluído em `src/wledadmin/web/static/` é
+distribuído sob a licença Zero-Clause BSD.
