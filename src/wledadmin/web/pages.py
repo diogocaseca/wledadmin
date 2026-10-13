@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from ..services.actions import ActionKind, BulkAction
+from ..services.app_settings import BACKUP_INTERVAL_HOURS, BACKUP_KEEP, SettingsError
 from ..services.auth import CredentialError
 from ..services.discovery import ScanAlreadyRunning
 from . import view
@@ -34,12 +35,17 @@ async def _base_ctx(services, username: str) -> dict:
         "username": username,
         "default_password": bool(admin and admin.is_default),
         "settings": services.settings,
+        "backup_interval_hours": services.app_settings.get(BACKUP_INTERVAL_HOURS),
+        "backup_keep": services.app_settings.get(BACKUP_KEEP),
     }
 
 
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request, services: ServicesDep, username: AdminDep):
-    rows = view.build_rows(await services.registry.list(), services.store)
+    rows = view.build_rows(
+        await services.registry.list(), services.store,
+        services.app_settings.get(BACKUP_INTERVAL_HOURS),
+    )
     ctx = await _base_ctx(services, username)
     return templates.TemplateResponse(
         request,
@@ -55,7 +61,10 @@ async def device_rows(
     services: ServicesDep,
     device_ids: Annotated[list[int], Query()] = [],  # noqa: B006 - padrão do FastAPI
 ):
-    rows = view.build_rows(await services.registry.list(), services.store)
+    rows = view.build_rows(
+        await services.registry.list(), services.store,
+        services.app_settings.get(BACKUP_INTERVAL_HOURS),
+    )
     return templates.TemplateResponse(
         request, "partials/device_rows.html", {"rows": rows, "selected": set(device_ids)}
     )
@@ -147,7 +156,33 @@ async def settings_account(
     return templates.TemplateResponse(
         request,
         "settings.html",
-        {**ctx, "error": error, "saved": error is None},
+        {**ctx, "account_error": error, "account_saved": error is None},
+        status_code=400 if error else 200,
+    )
+
+
+@router.post("/settings/backup", response_class=HTMLResponse)
+async def settings_backup(
+    request: Request,
+    services: ServicesDep,
+    username: AdminDep,
+    backup_interval_hours: Annotated[int, Form()],
+    backup_keep: Annotated[int, Form()],
+):
+    error = None
+    try:
+        keep_changed = backup_keep != services.app_settings.get(BACKUP_KEEP)
+        await services.app_settings.set(BACKUP_INTERVAL_HOURS, backup_interval_hours)
+        await services.app_settings.set(BACKUP_KEEP, backup_keep)
+        if keep_changed:
+            await services.backups.apply_retention_all()
+    except SettingsError as e:
+        error = str(e)
+    ctx = await _base_ctx(services, username)
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        {**ctx, "backup_error": error, "backup_saved": error is None},
         status_code=400 if error else 200,
     )
 

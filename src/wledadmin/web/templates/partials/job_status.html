@@ -1,0 +1,27 @@
+{% set c = job.counts %}
+<div class="job"
+     {% if job.status != "done" and not show_steps %}hx-get="/ui/jobs/{{ job.id }}" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+  <div class="job-head">
+    <strong>{{ job.title }}</strong>
+    {% if job.status == "queued" %}
+      <span class="muted">· aguardando outra operação terminar…</span>
+    {% elif job.status == "running" %}
+      <span class="muted">· {{ job.done_count }}/{{ job.items | length }}</span>
+    {% else %}
+      <span class="{{ 'bad' if c.failed else 'ok' }}">
+        · concluído: {{ c.ok }} ok{% if c.skipped %}, {{ c.skipped }} pulado(s){% endif %}{% if c.failed %}, {{ c.failed }} com falha{% endif %}
+      </span>
+    {% endif %}
+  </div>
+  <ul class="job-items">
+    {% for it in job.items %}
+    <li class="item-{{ it.status }}">
+      <span class="badge {{ it.status }}">{{ {"pending": "na fila", "running": "executando", "ok": "ok", "skipped": "pulado", "failed": "falhou"}[it.status] }}</span>
+      <strong>{{ it.name }}</strong>{% if it.message %}<span class="{{ 'bad' if it.status == 'failed' else 'muted' }}">: {{ it.message }}</span>{% endif %}
+      {% if show_steps and it.steps %}
+      <ol class="steps">{% for s in it.steps %}<li>{{ s }}</li>{% endfor %}</ol>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>

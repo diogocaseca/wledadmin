@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Restaurar · wledadmin{% endblock %}
+{% block content %}
+<p><a href="/devices/{{ device.id }}">← {{ device.name }}</a></p>
+<section class="card wide">
+  <h1>Restaurar {{ "configuração" if backup.kind == "cfg" else "presets" }} em {{ device.name }}</h1>
+  <dl class="facts">
+    <dt>Destino</dt><dd>{{ device.name }} · <span class="mono">{{ device.ip }}</span> · <span class="mono">{{ device.mac | mac }}</span></dd>
+    <dt>Backup</dt><dd>#{{ backup.id }} de {{ backup.device_name }}, {{ backup.created_at | dt }}</dd>
+    <dt>Firmware do backup</dt><dd>{{ backup.firmware_version or "—" }}</dd>
+  </dl>
+
+  {% if problems %}
+    <div class="flash error block">
+      <strong>Não é possível restaurar:</strong>
+      <ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>
+    </div>
+  {% else %}
+    {% if warnings %}
+    <div class="banner warn block">
+      <ul>{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    <h2>O que vai mudar no dispositivo</h2>
+    {% if current_error %}
+      <p class="flash error block">{{ current_error }}</p>
+    {% else %}
+      {% include "partials/diff.html" %}
+    {% endif %}
+
+    <p class="muted small">
+      Antes de enviar, o arquivo atual do dispositivo é salvo no histórico como
+      "antes de restaurar", para você poder desfazer.
+    </p>
+    <form method="post" action="/backups/{{ backup.id }}/restore" class="stack narrow">
+      <input type="hidden" name="device_id" value="{{ device.id }}">
+      <label>PIN de configurações do WLED (só se o dispositivo tiver um)
+        <input type="password" name="pin" inputmode="numeric" autocomplete="off" maxlength="8">
+        <span class="muted small">Usado só nesta operação; não é guardado.</span>
+      </label>
+      {% if needs_import_confirm %}
+      <label class="check"><input type="checkbox" name="confirm_import" value="true" required>
+        Conferi o diff e este arquivo importado é deste dispositivo.</label>
+      {% endif %}
+      <label class="check"><input type="checkbox" name="confirm" value="true" required>
+        {% if backup.kind == "cfg" %}Entendo que {{ device.name }} vai reiniciar.{% else %}Substituir os presets atuais de {{ device.name }}.{% endif %}
+      </label>
+      <button type="submit" class="primary">Restaurar</button>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

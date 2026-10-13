@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Copiar presets · wledadmin{% endblock %}
+{% block content %}
+<p><a href="javascript:history.back()">← Voltar</a></p>
+<section class="card wide">
+  <h1>Copiar presets de {{ backup.device_name }}</h1>
+  <p class="muted">Versão #{{ backup.id }} de {{ backup.created_at | dt }} ({{ "%.1f" | format(backup.size / 1024) }} KiB).</p>
+  <div class="banner warn block">
+    Os presets atuais dos dispositivos escolhidos serão substituídos. Antes, cada um ganha um
+    backup "antes de restaurar" no próprio histórico. A cópia é feita um dispositivo por vez.
+  </div>
+  <form method="post" action="/backups/{{ backup.id }}/copy" class="stack">
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th></th><th></th><th>Nome</th><th>IP</th><th>Firmware</th></tr></thead>
+      <tbody>
+      {% for d in devices %}
+        {% set st = status[d.id] %}
+        <tr class="{% if st.online is false %}offline{% endif %}">
+          <td><input type="checkbox" name="device_ids" value="{{ d.id }}" aria-label="Selecionar {{ d.name }}"
+                     {% if st.online is false %}disabled{% endif %}></td>
+          <td>{% if st.online is false %}<span class="dot off"></span>{% elif st.online %}<span class="dot on"></span>{% else %}<span class="dot unknown"></span>{% endif %}</td>
+          <td>{{ d.name }}{% if d.mac == backup.device_mac %} <span class="muted small">(origem)</span>{% endif %}</td>
+          <td class="mono">{{ d.ip }}</td>
+          <td>{{ d.version or "—" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <label class="narrow">PIN de configurações (se os dispositivos tiverem)
+      <input type="password" name="pin" inputmode="numeric" autocomplete="off" maxlength="8">
+      <span class="muted small">O mesmo PIN é usado em todos; não é guardado.</span>
+    </label>
+    <label class="check"><input type="checkbox" name="confirm" value="true" required>
+      Substituir os presets dos dispositivos selecionados.</label>
+    <button type="submit" class="primary">Copiar presets</button>
+  </form>
+</section>
+{% endblock %}

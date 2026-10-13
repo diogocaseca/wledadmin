@@ -93,7 +93,40 @@ td.empty { text-align: center; color: var(--muted); padding: 32px; white-space: 
 .flash.error { color: var(--bad); }
 #action-result .flash { display: block; }
 
+.cards { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; max-width: 460px; }
 .card h1 { font-size: 18px; margin-top: 0; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .stack label { display: flex; flex-direction: column; gap: 4px; }
+
+.card.wide { max-width: none; margin-bottom: 16px; }
+.card h2 { font-size: 15px; margin-top: 0; }
+.narrow { max-width: 460px; }
+.stack label.check { flex-direction: row; align-items: center; gap: 8px; }
+form.inline.wrap { flex-wrap: wrap; }
+select { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; align-self: flex-start; }
+a.ext { font-size: 12px; margin-left: 4px; opacity: .7; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0 0 12px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; }
+.row-actions { display: flex; gap: 10px; }
+.flash.block, .banner.block { display: block; border-radius: 6px; padding: 8px 12px; margin: 8px 0; }
+.banner.block ul, .flash.block ul { margin: 0; padding-left: 18px; }
+.bad { color: var(--bad); }
+
+.job { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; }
+.card .job { border: 0; padding: 0; }
+.job-items { list-style: none; margin: 6px 0 0; padding: 0; }
+.job-items > li { padding: 3px 0; }
+.badge { display: inline-block; min-width: 82px; text-align: center; font-size: 11px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+.badge.ok { color: var(--ok); border-color: var(--ok); }
+.badge.failed { color: var(--bad); border-color: var(--bad); }
+.badge.running { color: var(--accent); border-color: var(--accent); }
+.steps { margin: 4px 0 6px 96px; padding-left: 18px; color: var(--muted); font-size: 12px; }
+
+.diff { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 0; overflow-x: auto; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; max-height: 520px; }
+.diff span { display: block; padding: 0 12px; white-space: pre; }
+.diff .d-add { background: color-mix(in srgb, var(--ok) 16%, transparent); }
+.diff .d-del { background: color-mix(in srgb, var(--bad) 16%, transparent); }
+.diff .d-hunk { color: var(--accent); }

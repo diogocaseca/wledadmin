@@ -43,6 +43,10 @@ class DeviceRegistry:
         async with self._sf() as s:
             return await s.get(Device, device_id)
 
+    async def get_by_mac(self, mac: str) -> Device | None:
+        async with self._sf() as s:
+            return await s.scalar(select(Device).where(Device.mac == mac))
+
     async def get_many(self, ids: Sequence[int]) -> list[Device]:
         if not ids:
             return []

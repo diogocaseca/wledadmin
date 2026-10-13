@@ -4,7 +4,7 @@ Painel web self-hosted para administrar vários dispositivos [WLED](https://kno.
 na rede local, inspirado no TasmoAdmin. Pensado para rodar no homelab, ao lado do
 Home Assistant.
 
-**Fase 1 (atual):**
+**Fase 1:**
 - Descoberta automática via mDNS (`_wled._tcp`), varredura de faixa de IP e cadastro manual.
 - Tabela com nome, IP, MAC, firmware, arquitetura, RSSI, uptime, LEDs, heap livre,
   estado (ligado/brilho/preset) e indicador online/offline.
@@ -12,8 +12,16 @@ Home Assistant.
 - Atualização periódica em segundo plano.
 - Login obrigatório (HTTP Basic).
 
-**Próximas fases (arquitetura já preparada):** backup/restauração de `cfg.json` e
-`presets.json` com histórico, e OTA em lote.
+**Fase 2:**
+- Backup de `cfg.json` e `presets.json`, manual (em lote) e automático, com histórico.
+  Só guarda versões quando o conteúdo muda.
+- Diff legível entre versões e entre o backup e o que está no dispositivo.
+- Restauração segura, com backup automático antes, verificação depois e suporte a PIN.
+- Cópia de presets para vários dispositivos.
+- Importação de backups baixados pela própria interface do WLED e exportação em `.zip`.
+- Tela de configurações com intervalo do backup automático e retenção.
+
+**Próxima fase (arquitetura já preparada):** OTA em lote.
 
 ---
 
@@ -93,9 +101,77 @@ Rode **um único contêiner/worker**: o status ao vivo e as varreduras ficam em 
   bloqueadas, para que uma página maliciosa não use a sessão do seu navegador para
   desligar as luzes. Scripts sem `Origin` (curl) funcionam normalmente.
 
+## Backup e restauração
+
+### Como funciona o backup
+
+- **Manual:** selecione dispositivos na tabela e clique em **Fazer backup**, ou use o botão
+  na página do dispositivo (clique no nome dele).
+- **Automático:** a cada N horas (padrão 24), configurável em **Configurações**. O agendador
+  confere a cada 10 min quem está online e com o último backup vencido. Por isso ele não
+  perde backups se o wledadmin reiniciar, e faz o backup de quem estava desligado assim
+  que voltar.
+- **Só o que mudou vira versão.** Se o conteúdo for idêntico ao da última versão (mesmo
+  SHA-256), nada novo é gravado, mas a coluna **Backup** da tabela registra a verificação.
+  Ela fica destacada quando passa do dobro do intervalo sem verificação.
+- **Retenção:** guarda as últimas N versões por dispositivo e tipo (padrão 30). Versões
+  **fixadas** nunca são apagadas.
+- Os backups ficam no próprio SQLite (`WLEDADMIN_DATA_DIR`). Fazer backup do wledadmin é
+  copiar essa pasta (ou o volume `wledadmin-data`).
+
+### O que o backup contém (e o que não contém)
+
+O WLED guarda as senhas (Wi-Fi, AP, MQTT, OTA, PIN de configurações, chave do Hue) num
+arquivo separado, o `wsec.json`, que **nunca é servido pela rede**. O `cfg.json` guarda só
+o tamanho de cada senha. Portanto:
+
+- os backups do wledadmin não contêm senhas;
+- restaurar um `cfg.json` mantém as senhas que o dispositivo já tem;
+- num dispositivo resetado de fábrica, o Wi-Fi precisa ser configurado à mão antes.
+
+### Restauração
+
+Na página do dispositivo, clique em **restaurar** numa versão. A tela de confirmação mostra
+o diff entre o arquivo atual do dispositivo e o backup, além dos avisos aplicáveis. Ao
+confirmar:
+
+1. o conteúdo é validado (JSON do tipo certo) e é verificado se cabe no espaço livre;
+2. o arquivo atual vira uma versão "antes de restaurar", então dá para desfazer;
+3. se você informar o PIN de configurações, ele é usado só nesta operação e não é salvo;
+4. o arquivo é enviado minificado para `POST /upload`;
+5. com PIN, as configurações são bloqueadas de novo logo em seguida;
+6. **presets:** o arquivo é lido de volta e comparado; **configuração:** o dispositivo
+   reinicia sozinho, e o wledadmin espera até 90 s ele voltar com o mesmo MAC.
+
+Regras de segurança:
+
+- **Uma configuração só volta para o mesmo dispositivo (mesmo MAC).** O `cfg.json` contém
+  pinos GPIO, IP estático e hostname. Em outro hardware, isso pode gerar conflito de IP ou
+  impedir o boot. Não existe opção de "forçar".
+- **Backups importados** de configuração exigem uma confirmação extra, porque o wledadmin
+  não tem como saber de qual dispositivo o arquivo veio.
+- Restaurações e cópias rodam **uma de cada vez**, um dispositivo por vez.
+- O WLED grava o upload direto por cima do arquivo. Se a configuração for interrompida no
+  meio, o dispositivo pode subir em modo de recuperação (rede Wi-Fi `WLED-AP`). Nesse caso,
+  conecte-se a ela, configure o Wi-Fi e restaure a versão "antes de restaurar".
+
+### Copiar presets
+
+Numa versão de presets, clique em **copiar para…** e escolha os dispositivos. O
+`presets.json` não tem nada específico de hardware. Cada destino ganha uma versão "antes de
+restaurar" no próprio histórico, e a cópia é feita um dispositivo por vez.
+
+### Importar e exportar
+
+- **Importar:** na página do dispositivo, envie um `.json` baixado em
+  *Config → Security & Updates → Backup* da interface do WLED. O tipo é detectado sozinho.
+- **Exportar:** o link **Exportar backups (.zip)** na tela principal baixa a versão mais
+  recente de cada arquivo de cada dispositivo.
+
 ## Configuração
 
-Todas as opções são variáveis de ambiente com prefixo `WLEDADMIN_` (ou estão no `.env`).
+O intervalo do backup automático e a retenção ficam na tela **Configurações** (guardados no
+banco). O resto são variáveis de ambiente com prefixo `WLEDADMIN_` (ou estão no `.env`).
 Veja [.env.example](.env.example). As principais:
 
 | Variável | Padrão | Descrição |
@@ -127,6 +203,20 @@ curl -u admin:SENHA -X POST http://localhost:8000/api/scan \
 
 `kind` aceita `on`, `off`, `toggle`, `brightness` (0–255) e `preset` (1–250).
 
+Backups (operações de escrita exigem `"confirm": true`):
+
+```bash
+curl -u admin:SENHA -X POST http://localhost:8000/api/backups \
+     -H 'content-type: application/json' -d '{"device_ids": [1, 2]}'     # → job
+curl -u admin:SENHA http://localhost:8000/api/jobs/1
+curl -u admin:SENHA http://localhost:8000/api/devices/1/backups
+curl -u admin:SENHA http://localhost:8000/api/backups/7/content -o cfg.json
+curl -u admin:SENHA -X POST http://localhost:8000/api/backups/7/restore \
+     -H 'content-type: application/json' -d '{"confirm": true, "pin": "1234"}'
+curl -u admin:SENHA -X POST http://localhost:8000/api/backups/8/copy \
+     -H 'content-type: application/json' -d '{"device_ids": [2, 3], "confirm": true}'
+```
+
 ---
 
 ## Arquitetura
@@ -140,6 +230,10 @@ src/wledadmin/
 │   ├── poller.py        # polling periódico concorrente
 │   ├── actions.py       # ações em massa (conjunto fechado e validado)
 │   ├── auth.py          # credencial do admin (Argon2id)
+│   ├── backup.py        # backup, deduplicação, retenção, diff, restore em etapas
+│   ├── backup_scheduler.py  # backup automático
+│   ├── jobs.py          # jobs em segundo plano com progresso por dispositivo
+│   ├── app_settings.py  # configurações editáveis pela tela
 │   ├── discovery/       # mDNS, varredura e probe comum
 │   └── container.py     # monta e liga/desliga tudo
 ├── web/             # rotas FastAPI, templates Jinja2 + HTMX (sem build step)
@@ -187,10 +281,12 @@ a fase 1 usa polling:
 O poller fica isolado em `services/poller.py`. Um modo WS opcional por dispositivo pode
 ser adicionado depois sem mexer na UI nem no cache.
 
-### Preparação para as próximas fases
+### Preparação para o OTA (fase 3)
 
-- **Backup:** o `WLEDClient.get_json_file()` já lê `cfg.json` e `presets.json`. Falta só
-  uma tabela `backups` e o armazenamento em `WLEDADMIN_DATA_DIR`.
+- **Jobs:** o `JobManager` já roda operações em segundo plano com etapas por dispositivo,
+  e os jobs "exclusivos" rodam um por vez. É o mesmo modelo que o OTA sequencial vai usar.
+- **Backup antes do OTA:** o gatilho `pre_ota` já está previsto. O OTA vai salvar
+  `cfg.json` e `presets.json` antes de gravar o firmware.
 - **OTA:** a coluna `release` (0.15+) identifica a variante do build e, junto com `arch`,
   vai servir para escolher o `.bin` correto. O `DeviceRegistry.lock()` já serializa
   operações por dispositivo, para que backup, OTA e ações em massa não colidam. O

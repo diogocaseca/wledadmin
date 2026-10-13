@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Diff #{{ backup.id }} · wledadmin{% endblock %}
+{% block content %}
+<p>{% if device %}<a href="/devices/{{ device.id }}">← {{ device.name }}</a>{% else %}<a href="/">← Dispositivos</a>{% endif %}</p>
+<section class="card wide">
+  <h1>{{ backup.device_name }}: versão #{{ backup.id }}</h1>
+  <p class="muted">
+    {% if previous %}
+      Mudanças desde a versão #{{ previous.id }} ({{ previous.created_at | dt }}) até
+      {{ backup.created_at | dt }}.
+    {% else %}
+      Primeira versão deste tipo: todo o conteúdo aparece como adicionado.
+    {% endif %}
+  </p>
+  {% include "partials/diff.html" %}
+</section>
+{% endblock %}

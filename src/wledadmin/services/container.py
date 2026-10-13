@@ -12,8 +12,12 @@ from ..config import Settings
 from ..db import create_engine, create_session_factory, run_migrations
 from ..wled import WLEDClient, build_http_client
 from .actions import ActionService
+from .app_settings import AppSettingsService
 from .auth import AuthService
+from .backup import BackupService
+from .backup_scheduler import BackupScheduler
 from .discovery import DeviceProber, MDNSDiscovery, Scanner
+from .jobs import JobManager
 from .poller import Poller
 from .registry import DeviceRegistry
 from .status_store import StatusStore
@@ -35,6 +39,10 @@ class Services:
     scanner: Scanner
     actions: ActionService
     auth: AuthService
+    app_settings: AppSettingsService
+    jobs: JobManager
+    backups: BackupService
+    backup_scheduler: BackupScheduler
     mdns: MDNSDiscovery | None = None
 
     @classmethod
@@ -67,11 +75,19 @@ class Services:
         actions = ActionService(client, registry, store, concurrency=settings.poll_concurrency)
         auth = AuthService(sf)
         await auth.ensure_default_admin()
+        app_settings = AppSettingsService(sf)
+        await app_settings.load()
+        jobs = JobManager()
+        backups = BackupService(
+            sf, client, registry, store, app_settings, on_device_changed=poller.wake
+        )
+        backup_scheduler = BackupScheduler(backups, registry, store, app_settings)
         return cls(settings, engine, sf, http, client, registry, store, poller, prober,
-                   scanner, actions, auth)
+                   scanner, actions, auth, app_settings, jobs, backups, backup_scheduler)
 
     async def start_background(self) -> None:
         self.poller.start()
+        self.backup_scheduler.start()
         if self.settings.mdns_enabled:
             self.mdns = MDNSDiscovery(self.prober)
             try:
@@ -85,6 +101,8 @@ class Services:
         if self.mdns is not None:
             await self.mdns.stop()
         await self.scanner.stop()
+        await self.jobs.stop()
+        await self.backup_scheduler.stop()
         await self.poller.stop()
         await self.http.aclose()
         await self.engine.dispose()

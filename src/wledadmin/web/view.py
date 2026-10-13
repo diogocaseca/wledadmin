@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
-from ..models import Device
+from ..models import Device, utcnow
+from ..services.backup import format_age
 from ..services.status_store import StatusStore
 from ..wled import Arch, normalize_arch
 
@@ -34,14 +35,23 @@ class DeviceRow:
     preset: int | None
     last_error: str | None
     last_seen_at: datetime | None
+    last_backup_at: datetime | None
+    backup_age: str
+    backup_stale: bool
 
     def to_json(self) -> dict[str, Any]:
         d = asdict(self)
-        d["last_seen_at"] = self.last_seen_at.isoformat() if self.last_seen_at else None
+        for key in ("last_seen_at", "last_backup_at"):
+            d[key] = d[key].isoformat() if d[key] else None
         return d
 
 
-def build_rows(devices: list[Device], store: StatusStore) -> list[DeviceRow]:
+def build_rows(
+    devices: list[Device], store: StatusStore, backup_interval_hours: int = 0
+) -> list[DeviceRow]:
+    now = utcnow()
+    # Atrasado = passou do dobro do intervalo sem verificação de backup.
+    stale_after = timedelta(hours=backup_interval_hours * 2) if backup_interval_hours else None
     rows = []
     for d in devices:
         st = store.get(d.id)
@@ -69,6 +79,10 @@ def build_rows(devices: list[Device], store: StatusStore) -> list[DeviceRow]:
             preset=state.ps if state and state.ps not in (None, -1) else None,
             last_error=st.last_error,
             last_seen_at=st.last_ok_at or d.last_seen_at,
+            last_backup_at=d.last_backup_at,
+            backup_age=format_age(d.last_backup_at, now),
+            backup_stale=stale_after is not None
+            and (d.last_backup_at is None or now - d.last_backup_at > stale_after),
         ))
     return rows
 

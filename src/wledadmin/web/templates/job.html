@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ job.title }} · wledadmin{% endblock %}
+{% block content %}
+<p><a href="/">← Dispositivos</a></p>
+<section class="card wide" id="job-box" hx-get="/jobs/{{ job.id }}" hx-select="#job-box" hx-swap="outerHTML"
+         {% if job.status != "done" %}hx-trigger="every 1s"{% endif %}>
+  {% with show_steps = True %}{% include "partials/job_status.html" %}{% endwith %}
+  {% if job.status == "done" %}
+  <p class="muted small">Concluído em {{ job.finished_at | dt }}.</p>
+  {% endif %}
+</section>
+{% endblock %}

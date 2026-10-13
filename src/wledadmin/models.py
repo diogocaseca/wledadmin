@@ -8,7 +8,17 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, TypeDecorator
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    TypeDecorator,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -55,6 +65,9 @@ class Device(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     last_seen_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # Última verificação de backup bem-sucedida, mesmo sem mudança de conteúdo.
+    # É o que o agendador usa (backups iguais não geram linha nova em `backups`).
+    last_backup_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
 
 class AdminUser(Base):
@@ -66,3 +79,44 @@ class AdminUser(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class Backup(Base):
+    """Uma versão de cfg.json ou presets.json de um dispositivo.
+
+    Só é criada quando o conteúdo muda (SHA-256 diferente da versão anterior).
+    `device_mac` é guardado à parte: se o dispositivo for removido do painel, o histórico
+    continua e volta a se associar quando ele for redescoberto.
+    """
+
+    __tablename__ = "backups"
+    __table_args__ = (Index("ix_backups_mac_kind_created", "device_mac", "kind", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    device_id: Mapped[int | None] = mapped_column(
+        ForeignKey("devices.id", ondelete="SET NULL"), index=True
+    )
+    device_mac: Mapped[str] = mapped_column(String(12))
+    device_name: Mapped[str] = mapped_column(String(255))
+    kind: Mapped[str] = mapped_column(String(16))  # cfg | presets
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+    sha256: Mapped[str] = mapped_column(String(64))
+    size: Mapped[int] = mapped_column(Integer)
+    firmware_version: Mapped[str | None] = mapped_column(String(64))
+    vid: Mapped[int | None] = mapped_column(Integer)
+    release: Mapped[str | None] = mapped_column(String(64))
+    arch: Mapped[str | None] = mapped_column(String(16))
+    # manual | scheduled | pre_restore | import (e pre_ota na fase 3)
+    trigger: Mapped[str] = mapped_column(String(16))
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class AppSetting(Base):
+    """Configurações editáveis pela tela (chave/valor). Padrões ficam no código."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)

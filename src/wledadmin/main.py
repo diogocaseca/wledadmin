@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import Settings
 from .services.container import Services
-from .web import api, pages
+from .web import api, backups, pages
 from .web.security import SameOriginMiddleware
 
 
@@ -54,5 +54,6 @@ def create_app(
         return {"status": "ok"}
 
     app.include_router(pages.router)
+    app.include_router(backups.router)
     app.include_router(api.router)
     return app

@@ -1,0 +1,5 @@
+{% if not diff %}
+<p class="muted">Nenhuma diferença.</p>
+{% else %}
+<pre class="diff">{% for l in diff %}<span class="d-{{ l.kind }}">{% if l.kind == "add" %}+ {% elif l.kind == "del" %}- {% elif l.kind == "ctx" %}  {% endif %}{{ l.text }}</span>{% endfor %}</pre>
+{% endif %}

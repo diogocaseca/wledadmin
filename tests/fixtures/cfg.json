@@ -1,0 +1,31 @@
+{
+  "rev": [1, 0],
+  "vid": 2405180,
+  "id": {"mdns": "wled-aabb01", "name": "Sala", "inv": "Light", "sui": false},
+  "nw": {
+    "ins": [
+      {"ssid": "Casa", "pskl": 12, "ip": [0, 0, 0, 0], "gw": [0, 0, 0, 0], "sn": [255, 255, 255, 0]}
+    ]
+  },
+  "ap": {"ssid": "WLED-AP", "pskl": 8, "chan": 1, "hide": 0, "behav": 0, "ip": [4, 3, 2, 1]},
+  "wifi": {"sleep": false, "phy": false},
+  "hw": {
+    "led": {
+      "total": 60,
+      "maxpwr": 850,
+      "ledma": 55,
+      "ins": [
+        {"start": 0, "len": 60, "pin": [2], "order": 0, "rev": false, "skip": 0, "type": 22,
+         "ref": false, "rgbwm": 0, "freq": 0}
+      ]
+    },
+    "btn": {"max": 4, "ins": [{"type": 2, "pin": [0], "macros": [0, 0, 0]}], "tt": 32},
+    "ir": {"pin": -1, "type": 0},
+    "relay": {"pin": -1, "rev": false}
+  },
+  "light": {"scale-bri": 100, "pal-mode": 0, "aseg": false, "gc": {"bri": 1, "col": 2.8},
+            "tr": {"dur": 7, "pal": 0}, "nl": {"mode": 1, "dur": 60, "tbri": 0}},
+  "def": {"ps": 0, "on": true, "bri": 128},
+  "if": {"sync": {"port0": 21324, "port1": 65506}, "mqtt": {"en": false, "pskl": 0}},
+  "ota": {"lock": false, "lock-wifi": false, "pskl": 7, "aota": true}
+}

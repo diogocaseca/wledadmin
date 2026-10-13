@@ -15,6 +15,8 @@
     <span id="scan-status">{% include "partials/scan_status.html" %}</span>
   </form>
 
+  <a class="small" href="/backups/export.zip">Exportar backups (.zip)</a>
+
   <span class="muted small">
     mDNS: {% if mdns_active %}<span class="ok">ativo</span>{% else %}<span class="warn-text">inativo</span>{% endif %}
     · atualização a cada {{ settings.poll_interval|int }} s
@@ -38,6 +40,7 @@
       <input type="number" name="preset_value" min="1" max="250" placeholder="ID" aria-label="Preset">
       <button name="kind" value="preset">Aplicar preset</button>
     </span>
+    <button type="button" hx-post="/ui/backups">Fazer backup</button>
   </section>
   <div id="action-result"></div>
 
@@ -58,6 +61,7 @@
         <th>LEDs</th>
         <th>Heap livre</th>
         <th>Estado</th>
+        <th>Backup</th>
         <th></th>
       </tr>
     </thead>

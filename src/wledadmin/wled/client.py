@@ -70,7 +70,7 @@ class WLEDClient:
         except httpx.TimeoutException as e:
             raise WLEDTimeout(f"{host}: timeout") from e
         except httpx.TransportError as e:
-            raise WLEDUnreachable(f"{host}: {type(e).__name__}") from e
+            raise WLEDUnreachable(f"{host}: {describe_transport_error(e)}") from e
         except httpx.HTTPError as e:  # pragma: no cover - salvaguarda
             raise WLEDError(f"{host}: {e}") from e
 
@@ -131,10 +131,128 @@ class WLEDClient:
         return None
 
     async def get_json_file(self, host: str, name: str) -> Any:
-        """Lê um arquivo JSON do sistema de arquivos do WLED (ex.: cfg.json, presets.json).
-
-        Base para o backup da fase 2.
-        """
-        if name not in {"cfg.json", "presets.json"}:
-            raise ValueError(f"arquivo não suportado: {name}")
+        """Lê e decodifica um arquivo JSON do sistema de arquivos do WLED."""
+        _check_file_name(name)
         return await self._request("GET", host, f"/{name}")
+
+    # ---- arquivos (backup/restore) ---------------------------------------------------
+    #
+    # Conferido em wled00/file.cpp e wled_server.cpp (0.14.4, 0.15.0, main):
+    # - GET /<arquivo> é servido direto do FS, sem PIN; caminhos contendo "sec"
+    #   (wsec.json, com as senhas) nunca são servidos.
+    # - POST /upload (multipart, campo "data", filename = "/cfg.json") exige correctPIN.
+    #   Upload de cfg.json faz o dispositivo reiniciar sozinho.
+    # - Enviar {"pin": "..."} num POST JSON chama checkSettingsPIN(); o desbloqueio é
+    #   global no dispositivo e dura 15 min. GET /settings/lock bloqueia de novo.
+
+    async def download_file(
+        self, host: str, name: str, *, max_bytes: int = 1024 * 1024, timeout: float = 15.0
+    ) -> bytes | None:
+        """Bytes crus do arquivo (para hash/backup). None se o arquivo não existir."""
+        _check_file_name(name)
+        url = f"http://{host}/{name}"
+        try:
+            async with self._http.stream(
+                "GET", url, timeout=httpx.Timeout(timeout, connect=min(timeout, 3.0))
+            ) as resp:
+                if resp.status_code == 404:
+                    return None
+                if resp.status_code == 401:
+                    raise WLEDAuthRequired(f"{host}: autenticação exigida")
+                if resp.status_code >= 400:
+                    raise WLEDHTTPError(resp.status_code, f"{host}/{name}: HTTP {resp.status_code}")
+                chunks, total = [], 0
+                async for chunk in resp.aiter_bytes():
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise WLEDBadResponse(f"{host}/{name}: maior que {max_bytes} bytes")
+                    chunks.append(chunk)
+                return b"".join(chunks)
+        except httpx.TimeoutException as e:
+            raise WLEDTimeout(f"{host}: timeout") from e
+        except httpx.TransportError as e:
+            raise WLEDUnreachable(f"{host}: {describe_transport_error(e)}") from e
+
+    async def upload_file(
+        self, host: str, name: str, content: bytes, *, timeout: float = 20.0
+    ) -> str:
+        """Envia um arquivo via POST /upload. Retorna o texto de resposta do WLED."""
+        _check_file_name(name)
+        files = {"data": (f"/{name}", content, "application/json")}
+        try:
+            resp = await self._http.post(
+                f"http://{host}/upload",
+                files=files,
+                timeout=httpx.Timeout(timeout, connect=min(timeout, 3.0)),
+            )
+        except httpx.TimeoutException as e:
+            raise WLEDTimeout(f"{host}: timeout no upload") from e
+        except httpx.TransportError as e:
+            raise WLEDUnreachable(f"{host}: {describe_transport_error(e)}") from e
+        if resp.status_code == 401:
+            raise WLEDAuthRequired(f"{host}: PIN de configurações necessário ou incorreto")
+        if resp.status_code >= 400:
+            raise WLEDHTTPError(resp.status_code, f"{host}: upload HTTP {resp.status_code}")
+        return resp.text.strip()
+
+    async def unlock_settings(self, host: str, pin: str) -> None:
+        """Desbloqueia as configurações com o PIN. O WLED não diz se o PIN estava certo;
+        um PIN errado aparece como 401 na operação seguinte."""
+        await self._request("POST", host, "/json/state", json={"pin": pin})
+
+    async def lock_settings(self, host: str) -> None:
+        try:
+            await self._http.get(f"http://{host}/settings/lock")
+        except httpx.HTTPError as e:
+            raise WLEDUnreachable(f"{host}: {describe_transport_error(e)}") from e
+
+    async def wait_for_reboot(
+        self,
+        host: str,
+        mac: str,
+        *,
+        timeout: float = 90.0,
+        initial_delay: float = 3.0,
+        interval: float = 2.0,
+    ) -> DeviceInfo:
+        """Espera o dispositivo voltar depois de um reboot.
+
+        Considera "voltou" quando responde com o mesmo MAC e uptime menor que o tempo
+        decorrido (prova de que reiniciou, e não que respondeu antes de reiniciar).
+        """
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        await asyncio.sleep(initial_delay)
+        last_error: Exception | None = None
+        while loop.time() - start < timeout:
+            try:
+                info = await self.get_info(host, timeout=3.0)
+            except WLEDError as e:
+                last_error = e
+            else:
+                elapsed = loop.time() - start
+                if info.mac_normalized == mac and (
+                    info.uptime is None or info.uptime <= elapsed + 5
+                ):
+                    return info
+            await asyncio.sleep(interval)
+        raise WLEDTimeout(
+            f"{host}: não voltou em {timeout:.0f} s"
+            + (f" (último erro: {last_error})" if last_error else "")
+        )
+
+
+def describe_transport_error(e: Exception) -> str:
+    if isinstance(e, httpx.ConnectError):
+        return "sem conexão (desligado ou fora da rede)"
+    if isinstance(e, (httpx.ReadError, httpx.WriteError, httpx.RemoteProtocolError)):
+        return "conexão interrompida"
+    return type(e).__name__
+
+
+FILE_NAMES = frozenset({"cfg.json", "presets.json"})
+
+
+def _check_file_name(name: str) -> None:
+    if name not in FILE_NAMES:
+        raise ValueError(f"arquivo não suportado: {name}")

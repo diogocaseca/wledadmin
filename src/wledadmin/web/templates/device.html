@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ device.name }} · wledadmin{% endblock %}
+{% block content %}
+<p><a href="/">← Dispositivos</a></p>
+
+<section class="card wide">
+  <h1>
+    {% if status.online is none %}<span class="dot unknown"></span>
+    {% elif status.online %}<span class="dot on"></span>
+    {% else %}<span class="dot off"></span>{% endif %}
+    {{ device.name }}
+  </h1>
+  <dl class="facts">
+    <dt>IP</dt><dd class="mono"><a href="http://{{ device.ip }}/" target="_blank" rel="noopener">{{ device.ip }} ↗</a></dd>
+    <dt>MAC</dt><dd class="mono">{{ device.mac | mac }}</dd>
+    <dt>Firmware</dt><dd>{{ device.version or "—" }}{% if device.release %} <span class="muted">({{ device.release }})</span>{% endif %}</dd>
+    <dt>Arquitetura</dt><dd>{{ device.arch }}</dd>
+    <dt>Último backup verificado</dt><dd>{{ device.last_backup_at | dt }}</dd>
+  </dl>
+  <form hx-post="/ui/backups" hx-target="#backup-result" class="inline">
+    <input type="hidden" name="device_ids" value="{{ device.id }}">
+    <button type="submit">Fazer backup agora</button>
+  </form>
+  <div id="backup-result" hx-on::after-swap="if (event.detail.xhr.getResponseHeader('HX-Trigger')) location.reload()"></div>
+</section>
+
+{% if message %}<p class="flash success">{{ message }}</p>{% endif %}
+{% if error %}<p class="flash error">{{ error }}</p>{% endif %}
+
+<section class="card wide">
+  <h2>Histórico de backups</h2>
+  {% if not backups %}
+  <p class="muted">Nenhum backup ainda.</p>
+  {% else %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr>
+      <th>#</th><th>Data</th><th>Tipo</th><th>Firmware</th><th>Tamanho</th><th>Origem</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for b in backups %}
+      <tr>
+        <td class="mono small">{{ b.id }}{% if b.pinned %} 📌{% endif %}</td>
+        <td>{{ b.created_at | dt }}</td>
+        <td>{{ BackupKind(b.kind).label }}</td>
+        <td>{{ b.firmware_version or "—" }}</td>
+        <td>{{ "%.1f" | format(b.size / 1024) }} KiB</td>
+        <td>{{ BackupTrigger(b.trigger).label }}{% if b.note %} <span class="muted small" title="{{ b.note }}">· {{ b.note | truncate(24) }}</span>{% endif %}</td>
+        <td class="row-actions">
+          <a href="/backups/{{ b.id }}/download">baixar</a>
+          <a href="/backups/{{ b.id }}/diff">diff</a>
+          <a href="/backups/{{ b.id }}/restore?device_id={{ device.id }}">restaurar</a>
+          {% if b.kind == "presets" %}<a href="/backups/{{ b.id }}/copy">copiar para…</a>{% endif %}
+          <button type="button" class="link" hx-post="/ui/backups/{{ b.id }}/pin"
+                  hx-vals='{"pinned": {{ "false" if b.pinned else "true" }}}'>{{ "desafixar" if b.pinned else "fixar" }}</button>
+          {% if not b.pinned %}
+          <button type="button" class="link danger" hx-delete="/ui/backups/{{ b.id }}"
+                  hx-confirm="Excluir a versão #{{ b.id }}?" hx-target="#backup-result">excluir</button>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+
+<section class="card wide">
+  <h2>Importar backup</h2>
+  <p class="muted small">
+    Um <code>cfg.json</code> ou <code>presets.json</code> baixado pela própria interface do WLED
+    (Config → Security &amp; Updates → Backup) entra no histórico deste dispositivo e pode ser
+    restaurado depois.
+  </p>
+  <form method="post" action="/devices/{{ device.id }}/import" enctype="multipart/form-data" class="inline wrap">
+    <input type="file" name="file" accept=".json,application/json" required>
+    <select name="kind" aria-label="Tipo">
+      <option value="auto">detectar tipo</option>
+      <option value="cfg">configuração (cfg.json)</option>
+      <option value="presets">presets (presets.json)</option>
+    </select>
+    <input name="note" placeholder="observação (opcional)" maxlength="200">
+    <button type="submit">Importar</button>
+  </form>
+</section>
+{% endblock %}
