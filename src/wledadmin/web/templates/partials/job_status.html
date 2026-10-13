@@ -18,6 +18,7 @@
     <li class="item-{{ it.status }}">
       <span class="badge {{ it.status }}">{{ {"pending": "na fila", "running": "executando", "ok": "ok", "skipped": "pulado", "failed": "falhou"}[it.status] }}</span>
       <strong>{{ it.name }}</strong>{% if it.message %}<span class="{{ 'bad' if it.status == 'failed' else 'muted' }}">: {{ it.message }}</span>{% endif %}
+      {% if job.kind == "ota" and it.status == "failed" %}<a class="btn-link" href="/firmware/recover/{{ job.id }}/{{ it.device_id }}">Recuperar</a>{% endif %}
       {% if show_steps and it.steps %}
       <ol class="steps">{% for s in it.steps %}<li>{{ s }}</li>{% endfor %}</ol>
       {% endif %}

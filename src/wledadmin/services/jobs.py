@@ -59,6 +59,7 @@ class Job:
     title: str
     exclusive: bool
     items: list[JobItem]
+    kind: str = ""  # ex.: "ota" (a página do job oferece "Recuperar" nas falhas)
     status: JobStatus = JobStatus.QUEUED
     created_at: datetime = field(default_factory=utcnow)
     finished_at: datetime | None = None
@@ -100,12 +101,14 @@ class JobManager:
         *,
         concurrency: int = 1,
         exclusive: bool = False,
+        kind: str = "",
     ) -> Job:
         job = Job(
             id=next(self._ids),
             title=title,
             exclusive=exclusive,
             items=[JobItem(d.id, d.name) for d in devices],
+            kind=kind,
         )
         self._jobs[job.id] = job
         while len(self._jobs) > MAX_JOBS_KEPT:

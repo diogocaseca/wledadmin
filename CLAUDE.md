@@ -91,6 +91,9 @@ campos: confira em `wled00/json.cpp`, `wled_server.cpp`, `cfg.cpp`, `ota_update.
   com magic `0x57535453` e hash DJB2). **Nunca enviar `skipValidation`.** Downgrade é
   bloqueado; a versão mínima segura gera duas etapas na escolha automática e só aviso
   em `.bin` próprio/escolha manual.
+  O backup `pre_ota` é opcional (caixa marcada por padrão). Jobs de OTA têm
+  `Job.kind == "ota"`, e itens com falha levam a `/firmware/recover/<job>/<device>`, que
+  usa `OtaService.diagnose()` (estado ao vivo × backup mais novo) para sugerir restore.
 - Requisições aos ESP usam keep-alive desligado (poucos sockets no ESP; não roubar vaga
   do Home Assistant). Polling foi escolhido em vez do WebSocket `/ws` pelo mesmo motivo.
 

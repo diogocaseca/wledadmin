@@ -128,3 +128,39 @@ def test_firmware_settings(fw_client):
     assert "17.0.0" in fw_client.get("/firmware", headers=ADMIN).text
     r = fw_client.post("/settings/firmware", headers=H, data={"ota_repo": "sem barra"})
     assert r.status_code == 400 and "dono/repositório" in r.text
+
+
+def test_failed_update_offers_recovery(fw_client, network):
+    dev, dev_id = add(fw_client, network, INFO_16, "192.168.1.52", info={"ver": "0.15.4"},
+                      ota_fails=True)
+    form = {"tag": "v16.0.1", "device_ids": str(dev_id), "confirm": "on",
+            "confirm_text": "atualizar", "backup": "on"}
+    r = fw_client.post("/firmware/run", data=form, headers=H, follow_redirects=False)
+    job_id = int(r.headers["location"].rsplit("/", 1)[1])
+    assert wait_job(fw_client, job_id)["items"][0]["status"] == "failed"
+
+    job_page = fw_client.get(f"/jobs/{job_id}", headers=ADMIN).text
+    assert f"/firmware/recover/{job_id}/{dev_id}" in job_page
+
+    dev.files["cfg.json"] = b'{"rev": [1, 0]}'  # voltou "de fábrica"
+    page = fw_client.get(f"/firmware/recover/{job_id}/{dev_id}", headers=ADMIN).text
+    assert "A atualização falhou" in page and "recusou" in page
+    assert "diferente do backup" in page and "Restaurar configuração" in page
+    assert "Sugestão" in page
+
+    dev.offline = True
+    page = fw_client.get(f"/firmware/recover/{job_id}/{dev_id}", headers=ADMIN).text
+    assert "não está respondendo" in page and "WLED-AP" in page and "Verificar de novo" in page
+
+
+def test_backup_checkbox_unchecked_skips_backup(fw_client, network):
+    dev, dev_id = add(fw_client, network, INFO_16, "192.168.1.52", info={"ver": "0.15.4"})
+    page = fw_client.get(f"/firmware/plan?tag=v16.0.1&device_ids={dev_id}", headers=ADMIN).text
+    assert 'name="backup"' in page and "checked" in page.split('name="backup"')[1][:80]
+    form = {"tag": "v16.0.1", "device_ids": str(dev_id), "confirm": "on",
+            "confirm_text": "atualizar"}  # caixa de backup desmarcada
+    r = fw_client.post("/firmware/run", data=form, headers=H, follow_redirects=False)
+    job = wait_job(fw_client, int(r.headers["location"].rsplit("/", 1)[1]))
+    assert job["items"][0]["status"] == "ok"
+    assert job["items"][0]["steps"][0].startswith("Backup pulado")
+    assert fw_client.get(f"/api/devices/{dev_id}/backups", headers=ADMIN).json() == []

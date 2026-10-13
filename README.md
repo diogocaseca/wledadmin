@@ -222,7 +222,8 @@ Também bloqueiam: dispositivo offline, **OTA lock** ligado no dispositivo (lido
 - **Um dispositivo por vez**, e nenhuma outra operação de escrita (restore, cópia de
   presets) ao mesmo tempo.
 - Para cada dispositivo:
-  1. backup de `cfg.json` e `presets.json` (se falhar, aquele dispositivo não é atualizado);
+  1. backup de `cfg.json` e `presets.json`, se a opção **"Fazer backup antes de atualizar"**
+     estiver marcada (padrão). Se o backup falhar, aquele dispositivo não é atualizado;
   2. conferência do arquivo e do MAC;
   3. PIN, se informado;
   4. envio;
@@ -230,6 +231,23 @@ Também bloqueiam: dispositivo offline, **OTA lock** ligado no dispositivo (lido
   6. **conferência de que a versão mudou para a esperada**.
 - **Parar no primeiro erro** (padrão): os dispositivos restantes ficam como "cancelado".
 - O histórico de cada tentativa fica na página do dispositivo.
+
+### Se a atualização falhar
+
+Cada dispositivo que falhou ganha um botão **Recuperar** na página do job. A tela de
+recuperação diagnostica o dispositivo na hora:
+
+- **Não responde:** mostra o passo a passo: esperar, procurar a rede `WLED-AP` (senha
+  padrão `wled1234`, endereço `http://4.3.2.1`) ou regravar por USB. Há um botão
+  "Verificar de novo".
+- **Responde, mas `cfg.json`/`presets.json` estão diferentes do backup mais novo** (ou não
+  existem; ex.: voltou com a configuração de fábrica): sugere restaurar, com botões que
+  levam à tela de restauração (com diff e confirmação).
+- **Responde e está igual ao backup:** informa que não é preciso restaurar e sugere tentar
+  a atualização de novo.
+
+A restauração nunca é automática: ela reinicia o dispositivo e substitui a configuração,
+então passa sempre pela confirmação.
 
 Downgrade não é permitido: voltar de uma versão nova para uma antiga pode deixar o
 `cfg.json` incompatível. Reinstalar a mesma versão é permitido, marcando "reinstalar" no
@@ -313,6 +331,7 @@ curl -u admin:SENHA -X POST http://localhost:8000/api/firmware/run \
 
 O `run` recalcula o plano no servidor e só executa os dispositivos que estiverem prontos.
 Escolhas manuais vão em `"manual": {"<id>": "<arquivo>"}` e exigem `"confirm_devices": [<id>]`.
+`"backup": false` pula o backup antes de cada dispositivo (padrão `true`).
 
 ---
 

@@ -25,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from ..config import Settings
-from ..models import Device, OtaUpdate, utcnow
+from ..models import Backup, Device, OtaUpdate, utcnow
 from ..wled import (
     Arch,
     DeviceInfo,
@@ -47,7 +47,7 @@ from ..wled.firmware import (
     parse_version,
 )
 from .app_settings import OTA_INCLUDE_PRERELEASES, OTA_REPO, AppSettingsService
-from .backup import BackupService, BackupTrigger
+from .backup import BackupKind, BackupService, BackupTrigger
 from .jobs import ItemStatus, Job, JobItem, JobManager, StepFailed
 from .registry import DeviceRegistry
 from .releases import Release, ReleaseAsset, ReleaseError, ReleaseService
@@ -104,6 +104,38 @@ class DevicePlan:
     def path(self) -> str:
         versions = [self.current_version or "?"] + [format_version(s.version) for s in self.steps]
         return " → ".join(versions)
+
+
+@dataclass(frozen=True)
+class FileCheck:
+    kind: BackupKind
+    backup: Backup | None  # versão mais nova desse tipo no histórico
+    # same | different | missing (não existe no dispositivo) | no_backup | unreadable
+    status: str
+    detail: str | None = None
+
+    @property
+    def should_restore(self) -> bool:
+        return self.backup is not None and self.status in ("different", "missing")
+
+
+@dataclass(frozen=True)
+class RecoveryReport:
+    online: bool
+    error: str | None = None
+    version: str | None = None
+    files: list[FileCheck] = field(default_factory=list)
+
+    @property
+    def needs_restore(self) -> bool:
+        return any(f.should_restore for f in self.files)
+
+
+def _same_json(a: bytes, b: bytes) -> bool:
+    try:
+        return json.loads(a) == json.loads(b)
+    except ValueError:
+        return a == b
 
 
 class OtaService:
@@ -368,7 +400,7 @@ class OtaService:
     # ---- execução ----------------------------------------------------------------------
 
     def run(self, plans: list[DevicePlan], *, pin: str | None, stop_on_failure: bool,
-            title: str) -> Job:
+            title: str, backup: bool = True) -> Job:
         runnable = [p for p in plans if p.status is PlanStatus.READY and p.steps]
         by_id = {p.device.id: p for p in runnable}
         stopped = {"value": False}
@@ -379,21 +411,28 @@ class OtaService:
                 item.message = "cancelado: um dispositivo anterior falhou"
                 return
             try:
-                await self._update_device(by_id[device.id], pin, item)
+                await self._update_device(by_id[device.id], pin, item, backup)
             except Exception:
                 if stop_on_failure:
                     stopped["value"] = True
                 raise
 
-        return self._jobs.start(title, [p.device for p in runnable], worker, exclusive=True)
+        return self._jobs.start(title, [p.device for p in runnable], worker, exclusive=True,
+                                kind="ota")
 
-    async def _update_device(self, plan: DevicePlan, pin: str | None, item: JobItem) -> None:
+    async def _update_device(self, plan: DevicePlan, pin: str | None, item: JobItem,
+                             backup: bool) -> None:
         device = plan.device
-        item.step("Backup de cfg.json e presets.json antes de atualizar")
-        try:
-            await self._backups.backup_device(device, BackupTrigger.PRE_OTA)
-        except (StepFailed, WLEDError) as e:
-            raise StepFailed(f"o backup falhou, então a atualização não foi iniciada: {e}") from e
+        if backup:
+            item.step("Backup de cfg.json e presets.json antes de atualizar")
+            try:
+                await self._backups.backup_device(device, BackupTrigger.PRE_OTA)
+            except (StepFailed, WLEDError) as e:
+                raise StepFailed(
+                    f"o backup falhou, então a atualização não foi iniciada: {e}"
+                ) from e
+        else:
+            item.step("Backup pulado (desativado na confirmação)")
 
         async with self._registry.lock(device.id):
             total = len(plan.steps)
@@ -507,6 +546,54 @@ class OtaService:
                 finished_at=utcnow(),
             ))
             await s.commit()
+
+    # ---- recuperação após falha ---------------------------------------------------------
+
+    async def diagnose(self, device: Device) -> RecoveryReport:
+        """Estado atual do dispositivo comparado com os backups mais novos.
+
+        Feito na hora (não usa o cache do poller): depois de um OTA com falha o
+        dispositivo pode ter voltado com a configuração de fábrica, ou nem ter voltado.
+        """
+        try:
+            state, info = await self._client.get_state_info(device.ip)
+        except WLEDError as e:
+            return RecoveryReport(online=False, error=str(e))
+        if info.mac_normalized and info.mac_normalized != device.mac:
+            return RecoveryReport(online=False,
+                                  error=f"{device.ip} agora responde com outro MAC")
+        self._store.record_success(device.id, info, state)
+        if self._notify:
+            self._notify()
+
+        history = await self._backups.list_for_mac(device.mac)
+        files = []
+        for kind in BackupKind:
+            latest = next((b for b in history if b.kind == kind.value), None)
+            if latest is None:
+                files.append(FileCheck(kind, None, "no_backup"))
+                continue
+            try:
+                current = await self._client.download_file(device.ip, kind.file_name)
+            except WLEDError as e:
+                files.append(FileCheck(kind, latest, "unreadable", str(e)))
+                continue
+            if current is None:
+                files.append(FileCheck(kind, latest, "missing"))
+                continue
+            full = await self._backups.get(latest.id)
+            same = full is not None and _same_json(current, full.content)
+            files.append(FileCheck(kind, latest, "same" if same else "different"))
+        return RecoveryReport(online=True, version=info.ver, files=files)
+
+    async def last_failure(self, mac: str) -> OtaUpdate | None:
+        async with self._sf() as s:
+            return await s.scalar(
+                select(OtaUpdate)
+                .where(OtaUpdate.device_mac == mac, OtaUpdate.status == "failed")
+                .order_by(OtaUpdate.started_at.desc(), OtaUpdate.id.desc())
+                .limit(1)
+            )
 
     async def history(self, mac: str) -> list[OtaUpdate]:
         async with self._sf() as s:

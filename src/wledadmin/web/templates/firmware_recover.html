@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Recuperar {{ device.name }} · wledadmin{% endblock %}
+{% block content %}
+<p><a href="/jobs/{{ job_id }}">← Voltar ao job</a></p>
+
+<section class="card wide">
+  <h1>Recuperar {{ device.name }}</h1>
+  <p class="muted small"><span class="mono">{{ device.ip }}</span> · <span class="mono">{{ device.mac | mac }}</span></p>
+  {% if error %}
+  <div class="flash error block"><strong>A atualização falhou:</strong> {{ error }}</div>
+  {% endif %}
+  {% if steps %}
+  <details><summary class="small">Etapas executadas</summary>
+    <ol class="steps">{% for s in steps %}<li>{{ s }}</li>{% endfor %}</ol>
+  </details>
+  {% endif %}
+</section>
+
+<section class="card wide">
+  <h2>Situação agora</h2>
+  {% if not report.online %}
+    <p class="bad">O dispositivo não está respondendo ({{ report.error }}).</p>
+    <ol class="recovery">
+      <li>Aguarde 2 ou 3 minutos: depois de gravar o firmware, alguns ESP (principalmente
+          ESP8266 com arquivo .gz) demoram para voltar.</li>
+      <li>Se ele não voltar, procure no celular ou no computador a rede Wi-Fi
+          <strong>WLED-AP</strong> (senha padrão <code>wled1234</code>). Ela aparece quando o
+          dispositivo inicia sem configuração de Wi-Fi. Conecte-se, abra
+          <code>http://4.3.2.1</code> e configure a sua rede.</li>
+      <li>Se nem a rede WLED-AP aparecer, o firmware pode não ter iniciado: será preciso
+          regravar por USB (por exemplo, pelo <a href="https://install.wled.me" target="_blank" rel="noopener">instalador web do WLED</a>).</li>
+      <li>Quando ele voltar à rede, clique em <strong>Verificar de novo</strong> para comparar
+          a configuração com o backup e restaurar se for preciso.</li>
+    </ol>
+    <p><a class="button" href="">Verificar de novo</a></p>
+  {% else %}
+    <p class="ok">O dispositivo está respondendo{% if report.version %}, na versão <strong>{{ report.version }}</strong>{% endif %}.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Arquivo</th><th>Backup mais novo</th><th>Comparação com o dispositivo</th><th></th></tr></thead>
+      <tbody>
+      {% for f in report.files %}
+      <tr>
+        <td>{{ f.kind.label }} <span class="muted mono small">({{ f.kind.file_name }})</span></td>
+        <td>
+          {% if f.backup %}#{{ f.backup.id }} · {{ f.backup.created_at | dt }}
+            <div class="muted small">firmware {{ f.backup.firmware_version or "?" }}</div>
+          {% else %}<span class="muted">nenhum backup</span>{% endif %}
+        </td>
+        <td>
+          {% if f.status == "same" %}<span class="ok">igual ao backup: intacto</span>
+          {% elif f.status == "different" %}<span class="warn-text">diferente do backup</span>
+          {% elif f.status == "missing" %}<span class="bad">arquivo não existe no dispositivo</span>
+          {% elif f.status == "no_backup" %}<span class="muted">sem backup para comparar</span>
+          {% else %}<span class="bad">não consegui ler: {{ f.detail }}</span>{% endif %}
+        </td>
+        <td>
+          {% if f.should_restore %}
+          <a class="button primary" href="/backups/{{ f.backup.id }}/restore?device_id={{ device.id }}">Restaurar {{ f.kind.label | lower }}</a>
+          {% elif f.backup and f.status == "same" %}
+          <a href="/backups/{{ f.backup.id }}/restore?device_id={{ device.id }}" class="small">restaurar mesmo assim</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+
+    {% if report.needs_restore %}
+      <div class="banner warn block">
+        <strong>Sugestão:</strong> restaure o backup mais novo dos arquivos marcados. A tela
+        seguinte mostra exatamente o que vai mudar antes de enviar. Se o dispositivo voltou com
+        a configuração de fábrica, comece pela configuração (ele reinicia) e depois os presets.
+      </div>
+      {% for f in report.files if f.should_restore and f.backup %}
+        {% if f.backup.firmware_version and report.version and f.backup.firmware_version != report.version %}
+        <p class="muted small">O backup de {{ f.kind.label | lower }} foi feito no firmware
+          {{ f.backup.firmware_version }}; o dispositivo está no {{ report.version }}. O WLED
+          converte configurações antigas ao iniciar, mas confira o diff.</p>
+        {% endif %}
+      {% endfor %}
+    {% elif report.files and report.files | selectattr("status", "equalto", "same") | list | length == report.files | length %}
+      <p>A configuração e os presets estão iguais ao backup mais novo, então não é preciso
+        restaurar nada. Você pode tentar a atualização de novo pela tela
+        <a href="/firmware">Firmware</a>.</p>
+    {% else %}
+      <p class="muted">Confira a tabela acima. Sem backup para comparar não dá para sugerir
+        uma restauração; considere fazer um backup agora na
+        <a href="/devices/{{ device.id }}">página do dispositivo</a>.</p>
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

@@ -72,7 +72,8 @@
   {% if runnable %}
   <h2>Confirmar: {{ runnable }} dispositivo(s)</h2>
   <ul class="small">
-    <li>Antes de cada dispositivo, o wledadmin faz backup de <code>cfg.json</code> e <code>presets.json</code>; se o backup falhar, aquele dispositivo não é atualizado.</li>
+    <li>Com o backup marcado, o wledadmin salva <code>cfg.json</code> e <code>presets.json</code> antes de cada dispositivo; se o backup falhar, aquele dispositivo não é atualizado.</li>
+    <li>Se algo der errado, a página do job oferece <strong>Recuperar</strong>, que diagnostica o dispositivo e sugere restaurar o backup mais novo.</li>
     <li>Um dispositivo por vez. Cada um reinicia e só é considerado ok quando volta na versão esperada.</li>
     <li>Não desligue os dispositivos durante a atualização. ESP8266 com arquivo .gz pode levar alguns minutos para voltar.</li>
   </ul>
@@ -81,6 +82,13 @@
       <input type="password" name="pin" inputmode="numeric" autocomplete="off" maxlength="8">
       <span class="muted small">Usado só nesta operação; não é guardado.</span>
     </label>
+    <label class="check"><input type="checkbox" name="backup"
+           {% if form.get('backup', True) %}checked{% endif %}
+           onchange="document.getElementById('no-backup').hidden = this.checked">
+      Fazer backup de cfg.json e presets.json antes de atualizar (recomendado)</label>
+    <p id="no-backup" class="warn-text small" {% if form.get('backup', True) %}hidden{% endif %}>
+      ⚠ Sem backup, se a atualização falhar, a sugestão de restauração vai usar o backup mais
+      recente que já existir no histórico, que pode ser antigo ou nem existir.</p>
     <label class="check"><input type="checkbox" name="stop_on_failure"
            {% if form.get('stop_on_failure', stop_on_failure) %}checked{% endif %}>
       Parar no primeiro erro (os demais ficam como "cancelado")</label>

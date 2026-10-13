@@ -137,3 +137,10 @@ table.plan td { white-space: normal; vertical-align: top; }
 table.plan td > div { margin-top: 2px; }
 label.check { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
 label.inline { display: inline-flex; align-items: center; gap: 8px; }
+
+a.button { display: inline-block; padding: 5px 12px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface); }
+a.button:hover { border-color: var(--accent); text-decoration: none; }
+a.button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+a.btn-link { margin-left: 8px; font-size: 12px; padding: 1px 8px; border: 1px solid var(--accent); border-radius: 999px; }
+ol.recovery li { margin-bottom: 6px; }
+details summary { cursor: pointer; color: var(--muted); }

@@ -1,7 +1,7 @@
 import pytest
 
 from wledadmin.services.app_settings import AppSettingsService
-from wledadmin.services.backup import BackupService
+from wledadmin.services.backup import BackupService, BackupTrigger
 from wledadmin.services.jobs import ItemStatus, JobManager
 from wledadmin.services.ota import OtaService, PlanStatus
 from wledadmin.services.releases import ReleaseService
@@ -234,3 +234,54 @@ async def test_device_side_release_validation(ota, network, registry, store):
     assert p.status is PlanStatus.READY and any("Ethernet" in w for w in p.warnings)
     job = await run_and_wait(ota, [p])
     assert job.items[0].status is ItemStatus.FAILED and "mismatch" in job.items[0].message
+
+
+# ---- backup opcional e recuperação ---------------------------------------------------
+
+
+async def test_backup_can_be_skipped(ota, network, registry, store):
+    dev, device = await add(network, registry, store, INFO_16, "10.0.0.3",
+                            info={"ver": "0.15.4"})
+    plans = await ota.plan_release([device], await release(ota, "v16.0.1"))
+    job = ota.run(plans, pin=None, stop_on_failure=True, title="t", backup=False)
+    await ota._jobs.wait(job)
+    assert job.kind == "ota"
+    assert job.items[0].status is ItemStatus.OK
+    assert job.items[0].steps[0] == "Backup pulado (desativado na confirmação)"
+    assert await ota._backups.list_for_mac(device.mac) == []
+
+
+async def test_diagnose_offline(ota, network, registry, store):
+    dev, device = await add(network, registry, store, INFO_16, "10.0.0.3")
+    dev.offline = True
+    report = await ota.diagnose(device)
+    assert not report.online and "sem conexão" in report.error and report.files == []
+
+
+async def test_diagnose_detects_factory_reset_config(ota, network, registry, store):
+    dev, device = await add(network, registry, store, INFO_16, "10.0.0.3",
+                            info={"ver": "0.15.4"})
+    plans = await ota.plan_release([device], await release(ota, "v16.0.1"))
+    await run_and_wait(ota, plans)  # sucesso, gera o backup pre_ota
+    # Simula um dispositivo que voltou com cfg de fábrica e sem presets
+    dev.files["cfg.json"] = b'{"rev": [1, 0], "id": {"name": "WLED"}}'
+    del dev.files["presets.json"]
+    store.record_failure(device.id, "x")
+    store.record_failure(device.id, "x")
+
+    report = await ota.diagnose(device)
+    assert report.online and report.version == "16.0.1" and report.needs_restore
+    by_kind = {f.kind.value: f for f in report.files}
+    assert by_kind["cfg"].status == "different" and by_kind["cfg"].backup.trigger == "pre_ota"
+    assert by_kind["presets"].status == "missing"
+    assert store.get(device.id).online is True, "diagnóstico atualiza o status"
+
+
+async def test_diagnose_intact_and_without_backup(ota, network, registry, store):
+    _, device = await add(network, registry, store, INFO_16, "10.0.0.3")
+    report = await ota.diagnose(device)
+    assert [f.status for f in report.files] == ["no_backup", "no_backup"]
+    assert not report.needs_restore
+    await ota._backups.backup_device(device, BackupTrigger.MANUAL)
+    report = await ota.diagnose(device)
+    assert [f.status for f in report.files] == ["same", "same"] and not report.needs_restore

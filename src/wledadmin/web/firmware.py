@@ -44,6 +44,7 @@ class RunRequest(PlanRequest):
     confirm_text: str = ""
     confirm_devices: list[int] = Field(default_factory=list)
     stop_on_failure: bool | None = None
+    backup: bool = True  # backup de cfg.json/presets.json antes de cada dispositivo
 
 
 def _plan_request_from(params: ImmutableMultiDict) -> PlanRequest:
@@ -203,7 +204,8 @@ async def plan_page_post(request: Request, services: ServicesDep, username: Admi
         request, services, username, _plan_request_from(form),
         form={"confirm_devices": {int(v) for v in form.getlist("confirm_device")
                                   if v.isdigit()},
-              "stop_on_failure": form.get("stop_on_failure") == "on"},
+              "stop_on_failure": form.get("stop_on_failure") == "on",
+              "backup": form.get("backup") == "on"},
     )
 
 
@@ -218,17 +220,44 @@ async def run_page(request: Request, services: ServicesDep, username: AdminDep):
         confirm_text=form.get("confirm_text") or "",
         confirm_devices=[int(v) for v in form.getlist("confirm_device") if v.isdigit()],
         stop_on_failure=form.get("stop_on_failure") == "on",
+        backup=form.get("backup") == "on",
     )
     title, _, plans = await build_plan(services, req)
     if errors := confirmation_errors(req, plans):
         return await _render_plan(
             request, services, username, req, errors=errors, status_code=400,
             form={"confirm_devices": set(req.confirm_devices),
-                  "stop_on_failure": req.stop_on_failure},
+                  "stop_on_failure": req.stop_on_failure, "backup": req.backup},
         )
     job = services.ota.run(plans, pin=req.pin, stop_on_failure=bool(req.stop_on_failure),
-                           title=title)
+                           title=title, backup=req.backup)
     return RedirectResponse(f"/jobs/{job.id}", status_code=303)
+
+
+# ---- recuperação após falha --------------------------------------------------------
+
+
+@router.get("/firmware/recover/{job_id}/{device_id}", response_class=HTMLResponse)
+async def recover_page(request: Request, job_id: int, device_id: int,
+                       services: ServicesDep, username: AdminDep):
+    device = await services.registry.get(device_id)
+    if device is None:
+        raise HTTPException(404, "dispositivo não encontrado")
+    error, steps = None, []
+    job = services.jobs.get(job_id)
+    item = next((it for it in job.items if it.device_id == device_id), None) if job else None
+    if item is not None:
+        error, steps = item.message, item.steps
+    elif last := await services.ota.last_failure(device.mac):
+        error = last.message  # job saiu da memória (ex.: wledadmin reiniciou)
+    report = await services.ota.diagnose(device)
+    ctx = await _base_ctx(services, username)
+    return templates.TemplateResponse(
+        request,
+        "firmware_recover.html",
+        {**ctx, "device": device, "job_id": job_id, "error": error, "steps": steps,
+         "report": report},
+    )
 
 
 # ---- API JSON -----------------------------------------------------------------------
@@ -259,5 +288,6 @@ async def api_run(body: RunRequest, services: ServicesDep):
     stop = body.stop_on_failure
     if stop is None:
         stop = services.app_settings.get(OTA_STOP_ON_FAILURE)
-    job = services.ota.run(plans, pin=body.pin, stop_on_failure=stop, title=title)
+    job = services.ota.run(plans, pin=body.pin, stop_on_failure=stop, title=title,
+                           backup=body.backup)
     return {"job_id": job.id, "title": job.title}
