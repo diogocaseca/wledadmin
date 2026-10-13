@@ -75,8 +75,23 @@ Redirecionamentos usam `ingress.redirect(request, path)`. No App, o `wledadmin s
 escuta em dois sockets no mesmo servidor uvicorn (`cli.open_listeners`): `WLEDADMIN_PORT`
 (acesso direto, 0 = desligado) e `WLEDADMIN_INGRESS_PORT`; com porta de Ingress definida, o
 middleware decide pela porta local (`scope["server"]`): na do Ingress só o proxy do HA entra,
-na direta o cabeçalho é ignorado. `tests/test_ingress.py` varre as
+na direta o cabeçalho é ignorado. Como o TLS do uvicorn vale para todos os sockets de um
+servidor, `cli.serve_listeners` cria **um servidor uvicorn por porta**, todos com o mesmo
+app: o primeiro roda o lifespan e os outros só abrem depois dele. A porta direta pode usar
+HTTPS (`tls.ReloadingTLS`, recarga do certificado no mesmo `SSLContext` quando o arquivo
+muda; o par novo é validado num contexto descartável antes). O uvicorn devolve o sinal ao
+tratador anterior depois do desligamento; o `_serve` instala tratadores vazios para o
+processo sair com código 0 (o Supervisor reclama de código 143). `tests/test_ingress.py` varre as
 páginas atrás de URLs sem prefixo.
+
+**Saúde no App do HA** (código no `wledadmin-ha`). O Watchdog do Supervisor reinicia o app
+quando o contêiner cai ou fica `unhealthy` (HEALTHCHECK do Docker). O App **não** usa o
+`watchdog` por URL do `config.yaml`: com `host_network` e o acesso direto desligado, o
+Supervisor verificaria a 8000 vazia e reiniciaria em loop. Em vez disso, o `run.py` grava a
+porta em uso em `/tmp/wledadmin-health-port` (a direta ou, se desligada, a do Ingress), e o
+`healthcheck.py` faz `GET /healthz` nela a cada 60 s; qualquer resposta HTTP conta como viva
+(a porta do Ingress responde 403 para quem não é o proxy). Por isso `/healthz` deve continuar
+público, rápido e sem depender de dispositivos, banco ou rede externa.
 
 **HTMX.** `hx-target` é herdado do elemento pai: elementos com polling dentro de um
 `<form>` que tem `hx-target` precisam de `hx-target="this"`. A tabela principal preserva

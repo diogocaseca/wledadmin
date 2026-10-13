@@ -69,6 +69,15 @@ login, com as URLs sob o prefixo do HA) se vier do IP do proxy do Supervisor
 (`WLEDADMIN_INGRESS_PROXY_IP`, padrão `172.30.32.2`) **e** trouxer o cabeçalho
 `X-Ingress-Path`. Qualquer outro acesso continua exigindo usuário e senha.
 
+### HTTPS no acesso direto
+
+Com `WLEDADMIN_SSL_CERTFILE` (e `WLEDADMIN_SSL_KEYFILE`), a porta do acesso direto passa a
+falar **HTTPS**, e `http://` nela deixa de funcionar. A porta do Ingress do HA continua em
+HTTP, que é o que o proxy do HA usa. O certificado é recarregado sozinho quando o arquivo
+muda (ex.: renovação do Let's Encrypt), valendo para as conexões novas, sem reiniciar. Se
+o arquivo novo estiver inválido, o anterior é mantido e o log avisa. O certificado vale
+para o nome do domínio: acessar pelo IP mostra aviso no navegador.
+
 ## Rodando com Docker
 
 ```bash
@@ -321,6 +330,9 @@ Veja [.env.example](.env.example). As principais:
 | `WLEDADMIN_SCAN_SUBNETS` | vazio | Faixas padrão da varredura, ex.: `192.168.1.0/24` |
 | `WLEDADMIN_INGRESS` | `false` | Aceita o Ingress do Home Assistant (ligado pelo App) |
 | `WLEDADMIN_INGRESS_PROXY_IP` | `172.30.32.2` | IP de onde o Supervisor do HA faz o proxy do Ingress |
+| `WLEDADMIN_SSL_CERTFILE` | vazio | Certificado (PEM) para HTTPS na porta do acesso direto |
+| `WLEDADMIN_SSL_KEYFILE` | vazio | Chave privada (PEM); se vazio, procurada no próprio certificado |
+| `WLEDADMIN_SSL_RELOAD_INTERVAL` | `3600` | Segundos entre as verificações de certificado renovado |
 | `WLEDADMIN_INGRESS_PORT` | vazio | Porta exclusiva do Ingress (definida pelo App do HA); nela só o proxy do HA é aceito |
 | `WLEDADMIN_GITHUB_TOKEN` | vazio | Token do GitHub (opcional; só leitura de repositórios públicos) |
 | `WLEDADMIN_OTA_UPLOAD_TIMEOUT` | `240` | Tempo máximo do envio de firmware (s) |

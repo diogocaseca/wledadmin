@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     # aceito nessa porta e o acesso direto fica em `port` (0 = acesso direto desligado).
     ingress_port: int | None = None
 
+    # HTTPS na porta do acesso direto (a porta do Ingress continua em HTTP, que é o que o
+    # proxy do HA usa). Sem keyfile, a chave é procurada no próprio certfile.
+    ssl_certfile: Path | None = None
+    ssl_keyfile: Path | None = None
+    ssl_reload_interval: float = 3600.0  # confere se o certificado foi renovado
+
     # Firmware (OTA). O token é opcional: sem ele a API do GitHub limita a 60 req/h,
     # o que basta porque a lista de releases fica em cache.
     github_token: str | None = None
