@@ -26,7 +26,8 @@ async def ota(session_factory, client, registry, store, settings, github):
                               transport=github.transport())
     svc = OtaService(session_factory, client, registry, store, backups, releases,
                      app_settings, JobManager(), settings,
-                     reboot_initial_delay=0, reboot_poll_interval=0.01)
+                     reboot_initial_delay=0, reboot_poll_interval=0.01,
+                     lock_poll_interval=0.01, lock_timeout=0.2)
     yield svc
     await releases.close()
 
@@ -146,11 +147,12 @@ async def test_blockers_offline_lock_repo(ota, network, registry, store):
                         info={"ver": "0.15.4", "repo": "MoonModules/WLED-MM",
                               "mac": "34b4720c0d99"})
     plans = await ota.plan_release([off, locked, fork], await release(ota, "v16.0.1"))
-    assert [p.status for p in plans] == [PlanStatus.BLOCKED] * 3
+    assert [p.status for p in plans] == [PlanStatus.BLOCKED, PlanStatus.READY,
+                                         PlanStatus.BLOCKED]
     assert "offline" in plans[0].blockers[0]
-    assert "OTA bloqueado" in plans[1].blockers[0]
+    assert plans[1].ota_locked and any("trava de OTA" in w for w in plans[1].warnings)
     assert "outro repositório" in plans[2].blockers[0]
-    job = await run_and_wait(ota, plans)
+    job = await run_and_wait(ota, [plans[0], plans[2]])
     assert job.items == [], "nada bloqueado entra no job"
 
 
@@ -285,3 +287,78 @@ async def test_diagnose_intact_and_without_backup(ota, network, registry, store)
     await ota._backups.backup_device(device, BackupTrigger.MANUAL)
     report = await ota.diagnose(device)
     assert [f.status for f in report.files] == ["same", "same"] and not report.needs_restore
+
+
+# ---- trava de OTA --------------------------------------------------------------------
+
+
+async def _locked(network, registry, store, **kw):
+    return await add(network, registry, store, INFO_16, "10.0.0.3",
+                     info={"ver": "0.15.4"}, ota_lock=True, **kw)
+
+
+async def run_locked(ota, plans, pin=None, ota_password=None):
+    job = ota.run(plans, pin=pin, stop_on_failure=True, title="t", ota_password=ota_password)
+    await ota._jobs.wait(job)
+    return job.items[0]
+
+
+async def test_ota_lock_unlocked_and_relocked(ota, network, registry, store):
+    dev, device = await _locked(network, registry, store, pin="1234")
+    plans = await ota.plan_release([device], await release(ota, "v16.0.1"))
+    item = await run_locked(ota, plans, pin="1234", ota_password="wledota")
+    assert item.status is ItemStatus.OK, item.message
+    assert dev.info["ver"] == "16.0.1" and dev.ota_lock is True
+    assert "Trava de OTA desligada" in item.steps and "Trava de OTA religada" in item.steps
+    relock = [p for p in dev.posts if p.get("ota", {}).get("lock") is True][-1]
+    assert "psk" not in relock["ota"], "religar não reenvia a senha"
+
+
+async def test_ota_lock_without_or_wrong_password(ota, network, registry, store):
+    dev, device = await _locked(network, registry, store)
+    plans = await ota.plan_release([device], await release(ota, "v16.0.1"))
+    item = await run_locked(ota, plans)
+    assert item.status is ItemStatus.FAILED and "informe a senha de OTA" in item.message
+    item = await run_locked(ota, plans, ota_password="errada")
+    assert item.status is ItemStatus.FAILED and "senha de OTA incorreta" in item.message
+    assert dev.firmware_uploads == [] and dev.ota_lock is True
+
+
+async def test_ota_lock_needs_pin_for_cfg(ota, network, registry, store):
+    dev, device = await _locked(network, registry, store, pin="1234")
+    plans = await ota.plan_release([device], await release(ota, "v16.0.1"))
+    item = await run_locked(ota, plans, ota_password="wledota")
+    assert item.status is ItemStatus.FAILED and "PIN" in item.message
+    assert dev.firmware_uploads == []
+
+
+async def test_ota_lock_two_steps_unlock_once(ota, network, registry, store):
+    dev, device = await add(network, registry, store, INFO_015, "10.0.0.2", ota_lock=True)
+    plans = await ota.plan_release([device], await release(ota, "v16.0.1"))
+    assert len(plans[0].steps) == 2
+    item = await run_locked(ota, plans, ota_password="wledota")
+    assert item.status is ItemStatus.OK, item.message
+    assert item.steps.count("Trava de OTA desligada") == 1
+    assert item.steps.count("Trava de OTA religada") == 1
+    assert dev.ota_lock is True and dev.info["ver"] == "16.0.1"
+
+
+async def test_ota_lock_relocked_after_failed_upload(ota, network, registry, store):
+    dev, device = await _locked(network, registry, store, ota_fails=True)
+    plans = await ota.plan_release([device], await release(ota, "v16.0.1"))
+    item = await run_locked(ota, plans, ota_password="wledota")
+    assert item.status is ItemStatus.FAILED and "recusou" in item.message
+    assert dev.ota_lock is True and "Trava de OTA religada" in item.steps
+
+
+async def test_ota_lock_left_open_when_device_disappears(ota, network, registry, store):
+    dev, device = await _locked(network, registry, store, reboot_requests=10_000)
+    plans = await ota.plan_release([device], await release(ota, "v16.0.1"))
+    item = await run_locked(ota, plans, ota_password="wledota")
+    assert item.status is ItemStatus.FAILED and "WLED-AP" in item.message
+    assert item.data.get("ota_relock_pending") is True and dev.ota_lock is False
+    # o dispositivo volta: religar pela recuperação
+    dev.rebooting = 0
+    dev.reboot_requests = 0
+    assert await ota.relock_ota(device, None, item) is True
+    assert dev.ota_lock is True and "ota_relock_pending" not in item.data

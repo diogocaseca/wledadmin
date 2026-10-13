@@ -1,3 +1,5 @@
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -22,6 +24,8 @@ def fw_client(settings, network, github):
     with TestClient(app, base_url="http://wledadmin.test") as tc:
         app.state.services.ota._reboot_initial_delay = 0
         app.state.services.ota._reboot_poll_interval = 0.01
+        app.state.services.ota._lock_poll_interval = 0.01
+        app.state.services.ota._lock_timeout = 0.2
         yield tc
 
 
@@ -32,11 +36,13 @@ def add(tc, network, fixture, ip, **kw):
     return dev, r.json()["id"]
 
 
-def wait_job(tc, job_id):
-    for _ in range(300):
+def wait_job(tc, job_id, timeout=10.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
         job = tc.get(f"/api/jobs/{job_id}", headers=ADMIN).json()
         if job["status"] == "done":
             return job
+        time.sleep(0.02)
     raise AssertionError("job não terminou")
 
 
@@ -164,3 +170,44 @@ def test_backup_checkbox_unchecked_skips_backup(fw_client, network):
     assert job["items"][0]["status"] == "ok"
     assert job["items"][0]["steps"][0].startswith("Backup pulado")
     assert fw_client.get(f"/api/devices/{dev_id}/backups", headers=ADMIN).json() == []
+
+
+def test_ota_lock_requires_password_at_confirmation(fw_client, network):
+    dev, dev_id = add(fw_client, network, INFO_16, "192.168.1.52", info={"ver": "0.15.4"},
+                      ota_lock=True)
+    page = fw_client.get(f"/firmware/plan?tag=v16.0.1&device_ids={dev_id}", headers=ADMIN).text
+    assert "pronto" in page and 'name="ota_password"' in page and "trava de OTA" in page
+
+    form = {"tag": "v16.0.1", "device_ids": str(dev_id), "confirm": "on",
+            "confirm_text": "atualizar", "backup": "on"}
+    r = fw_client.post("/firmware/run", data=form, headers=H)
+    assert r.status_code == 400 and "informe a senha de OTA" in r.text
+
+    r = fw_client.post("/firmware/run", data={**form, "ota_password": "wledota"}, headers=H,
+                       follow_redirects=False)
+    job = wait_job(fw_client, int(r.headers["location"].rsplit("/", 1)[1]))
+    assert job["items"][0]["status"] == "ok", job
+    assert dev.ota_lock is True and dev.info["ver"] == "16.0.1"
+    assert "wledota" not in fw_client.get(r.headers["location"], headers=ADMIN).text
+
+
+def test_recovery_offers_relock(fw_client, network):
+    dev, dev_id = add(fw_client, network, INFO_16, "192.168.1.52", info={"ver": "0.15.4"},
+                      ota_lock=True, reboot_requests=10_000)
+    form = {"tag": "v16.0.1", "device_ids": str(dev_id), "confirm": "on",
+            "confirm_text": "atualizar", "ota_password": "wledota"}
+    r = fw_client.post("/firmware/run", data=form, headers=H, follow_redirects=False)
+    job_id = int(r.headers["location"].rsplit("/", 1)[1])
+    assert wait_job(fw_client, job_id)["items"][0]["status"] == "failed"
+    assert dev.ota_lock is False
+
+    page = fw_client.get(f"/firmware/recover/{job_id}/{dev_id}", headers=ADMIN).text
+    assert "Trava de OTA desligada" in page and "Religar trava de OTA" in page
+
+    dev.rebooting = 0
+    dev.reboot_requests = 0
+    r = fw_client.post(f"/firmware/recover/{job_id}/{dev_id}/relock", data={"pin": ""},
+                       headers=H, follow_redirects=False)
+    assert r.headers["location"].endswith("relock=ok") and dev.ota_lock is True
+    page = fw_client.get(r.headers["location"], headers=ADMIN).text
+    assert "Trava de OTA religada" in page and "Religar trava de OTA" not in page

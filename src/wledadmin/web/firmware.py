@@ -45,6 +45,7 @@ class RunRequest(PlanRequest):
     confirm_devices: list[int] = Field(default_factory=list)
     stop_on_failure: bool | None = None
     backup: bool = True  # backup de cfg.json/presets.json antes de cada dispositivo
+    ota_password: str | None = None  # só para dispositivos com a trava de OTA ligada
 
 
 def _plan_request_from(params: ImmutableMultiDict) -> PlanRequest:
@@ -107,6 +108,8 @@ def confirmation_errors(req: RunRequest, plans: list[DevicePlan]) -> list[str]:
     for p in runnable:
         if p.needs_device_confirm and p.device.id not in req.confirm_devices:
             errors.append(f"confirme o arquivo escolhido para {p.device.name}")
+    if any(p.ota_locked for p in runnable) and not req.ota_password:
+        errors.append("informe a senha de OTA: há dispositivos com a trava de OTA ligada")
     return errors
 
 
@@ -126,6 +129,7 @@ def plan_json(p: DevicePlan) -> dict:
         "candidates": [a.name for a in p.candidates],
         "needs_device_confirm": p.needs_device_confirm,
         "reinstall": p.reinstall,
+        "ota_locked": p.ota_locked,
     }
 
 
@@ -221,6 +225,7 @@ async def run_page(request: Request, services: ServicesDep, username: AdminDep):
         confirm_devices=[int(v) for v in form.getlist("confirm_device") if v.isdigit()],
         stop_on_failure=form.get("stop_on_failure") == "on",
         backup=form.get("backup") == "on",
+        ota_password=(form.get("ota_password") or None),
     )
     title, _, plans = await build_plan(services, req)
     if errors := confirmation_errors(req, plans):
@@ -230,7 +235,7 @@ async def run_page(request: Request, services: ServicesDep, username: AdminDep):
                   "stop_on_failure": req.stop_on_failure, "backup": req.backup},
         )
     job = services.ota.run(plans, pin=req.pin, stop_on_failure=bool(req.stop_on_failure),
-                           title=title, backup=req.backup)
+                           title=title, backup=req.backup, ota_password=req.ota_password)
     return RedirectResponse(f"/jobs/{job.id}", status_code=303)
 
 
@@ -256,7 +261,23 @@ async def recover_page(request: Request, job_id: int, device_id: int,
         request,
         "firmware_recover.html",
         {**ctx, "device": device, "job_id": job_id, "error": error, "steps": steps,
-         "report": report},
+         "report": report, "relock_pending": bool(item and item.data.get("ota_relock_pending")),
+         "relock_result": request.query_params.get("relock")},
+    )
+
+
+@router.post("/firmware/recover/{job_id}/{device_id}/relock")
+async def recover_relock(job_id: int, device_id: int, services: ServicesDep,
+                         pin: Annotated[str, Form()] = ""):
+    device = await services.registry.get(device_id)
+    if device is None:
+        raise HTTPException(404, "dispositivo não encontrado")
+    job = services.jobs.get(job_id)
+    item = next((it for it in job.items if it.device_id == device_id), None) if job else None
+    ok = await services.ota.relock_ota(device, pin or None, item)
+    return RedirectResponse(
+        f"/firmware/recover/{job_id}/{device_id}?relock={'ok' if ok else 'fail'}",
+        status_code=303,
     )
 
 
@@ -289,5 +310,5 @@ async def api_run(body: RunRequest, services: ServicesDep):
     if stop is None:
         stop = services.app_settings.get(OTA_STOP_ON_FAILURE)
     job = services.ota.run(plans, pin=body.pin, stop_on_failure=stop, title=title,
-                           backup=body.backup)
+                           backup=body.backup, ota_password=body.ota_password)
     return {"job_id": job.id, "title": job.title}

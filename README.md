@@ -213,8 +213,28 @@ Os metadados do WLED (versão, release, versão mínima) estão embutidos nos bi
 partir da 0.15.3. Em arquivos mais antigos, só as verificações de hardware são possíveis,
 e o plano avisa.
 
-Também bloqueiam: dispositivo offline, **OTA lock** ligado no dispositivo (lido do
-`cfg.json`) e dispositivos 16.x que rodam firmware de **outro repositório** (forks).
+Também bloqueiam: dispositivo offline e dispositivos 16.x que rodam firmware de **outro
+repositório** (forks).
+
+### Trava de OTA ("OTA lock")
+
+Dispositivos com a trava de OTA ligada (lida do `cfg.json`) não são bloqueados: o plano
+avisa, e a confirmação pede a **senha de OTA** (padrão de fábrica `wledota`). Ela é diferente
+do PIN de configurações: o WLED só aceita desligar a trava com a senha de OTA, e o PIN é
+exigido para alterar a configuração. A mesma senha e o mesmo PIN valem para todos os
+dispositivos da atualização. Nenhum dos dois é guardado.
+
+- A trava é desligada com um `POST` parcial em `/json/cfg`
+  (`{"pin": …, "ota": {"psk": <senha>, "lock": false}}`), que altera só esse campo. A tela
+  de segurança do WLED (`/settings/sec`) não é usada: ela redefine outras opções (trava de
+  Wi-Fi, ArduinoOTA, sub-rede) e pode trocar o PIN.
+- Depois do envio, o wledadmin confere no `cfg.json` que a trava desligou de fato. O WLED
+  responde "sucesso" mesmo com a senha errada, então essa conferência é o que detecta senha
+  incorreta, antes de qualquer envio.
+- Depois da atualização (inclusive em duas etapas), a trava é **sempre religada**, sem
+  reenviar a senha. Se a atualização falhar, o wledadmin tenta religar mesmo assim. Se o
+  dispositivo não voltar, a tela de **Recuperar** avisa que a trava ficou desligada e
+  oferece o botão **Religar trava de OTA** quando ele estiver online.
 
 ### Execução
 
@@ -225,10 +245,12 @@ Também bloqueiam: dispositivo offline, **OTA lock** ligado no dispositivo (lido
   1. backup de `cfg.json` e `presets.json`, se a opção **"Fazer backup antes de atualizar"**
      estiver marcada (padrão). Se o backup falhar, aquele dispositivo não é atualizado;
   2. conferência do arquivo e do MAC;
-  3. PIN, se informado;
-  4. envio;
-  5. espera do reboot (até 3 min);
-  6. **conferência de que a versão mudou para a esperada**.
+  3. trava de OTA desligada, se estiver ligada;
+  4. PIN, se informado;
+  5. envio;
+  6. espera do reboot (até 3 min);
+  7. **conferência de que a versão mudou para a esperada**;
+  8. trava de OTA religada, se tiver sido desligada.
 - **Parar no primeiro erro** (padrão): os dispositivos restantes ficam como "cancelado".
 - O histórico de cada tentativa fica na página do dispositivo.
 
@@ -332,6 +354,7 @@ curl -u admin:SENHA -X POST http://localhost:8000/api/firmware/run \
 O `run` recalcula o plano no servidor e só executa os dispositivos que estiverem prontos.
 Escolhas manuais vão em `"manual": {"<id>": "<arquivo>"}` e exigem `"confirm_devices": [<id>]`.
 `"backup": false` pula o backup antes de cada dispositivo (padrão `true`).
+Para dispositivos com a trava de OTA ligada, envie `"ota_password": "<senha de OTA>"`.
 
 ---
 

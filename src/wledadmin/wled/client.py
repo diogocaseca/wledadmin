@@ -227,6 +227,45 @@ class WLEDClient:
             raise WLEDHTTPError(resp.status_code, f"{host}: {text or f'HTTP {resp.status_code}'}")
         return text
 
+    async def set_ota_lock(
+        self, host: str, locked: bool, *, pin: str | None, ota_password: str | None
+    ) -> None:
+        """Liga/desliga a trava de OTA via POST parcial em /json/cfg.
+
+        Conferido em cfg.cpp (0.14.4, 0.15.0, 16.x): com a trava ligada, `ota.lock` só é
+        aceito se `ota.psk` trouxer a senha de OTA correta; sem `psk` a senha guardada não
+        muda. O POST em /json/cfg exige o PIN de configurações (enviado no corpo).
+        O WLED responde {"success": true} mesmo com senha errada: confira com
+        wait_ota_lock().
+        """
+        ota: dict[str, Any] = {"lock": locked}
+        if ota_password:
+            ota["psk"] = ota_password
+        body: dict[str, Any] = {"ota": ota}
+        if pin:
+            body["pin"] = pin
+        await self._request("POST", host, "/json/cfg", json=body)
+
+    async def get_ota_lock(self, host: str) -> bool | None:
+        cfg = await self.get_json_file(host, "cfg.json")
+        ota = cfg.get("ota") if isinstance(cfg, dict) else None
+        lock = ota.get("lock") if isinstance(ota, dict) else None
+        return lock if isinstance(lock, bool) else None
+
+    async def wait_ota_lock(
+        self, host: str, expected: bool, *, timeout: float = 5.0, interval: float = 0.5
+    ) -> bool:
+        """O cfg.json em disco é regravado logo depois do POST (no loop do WLED); na
+        0.14 o GET /json/cfg também lê o arquivo. Por isso tentamos por alguns segundos."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while True:
+            if await self.get_ota_lock(host) is expected:
+                return True
+            if loop.time() >= deadline:
+                return False
+            await asyncio.sleep(interval)
+
     async def unlock_settings(self, host: str, pin: str) -> None:
         """Desbloqueia as configurações com o PIN. O WLED não diz se o PIN estava certo;
         um PIN errado aparece como 401 na operação seguinte."""

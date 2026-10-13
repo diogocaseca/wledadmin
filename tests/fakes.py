@@ -67,6 +67,7 @@ class FakeDevice:
 
     # OTA (/update)
     ota_lock: bool = False
+    ota_password: str = "wledota"
     ota_fails: bool = False  # responde 500 "Update failed!"
     ota_keeps_version: bool = False  # reinicia, mas continua na versão antiga
     validates_release: bool = False  # comportamento do 16.x
@@ -145,6 +146,9 @@ class FakeWLEDNetwork:
         if request.method == "POST" and path == "/update":
             return self._ota(dev, request)
 
+        if request.method == "POST" and path == "/json/cfg":
+            return self._cfg(dev, request)
+
         if request.method == "POST" and path == "/json/state":
             body = json.loads(request.content)
             dev.posts.append(body)
@@ -182,6 +186,22 @@ class FakeWLEDNetwork:
             dev.reboot()
             return httpx.Response(200, text="Config restore ok.\nRebooting...")
         return httpx.Response(200, text="File Uploaded!")
+
+    def _cfg(self, dev: FakeDevice, request: httpx.Request) -> httpx.Response:
+        """POST parcial em /json/cfg, com as regras de cfg.cpp para `ota`."""
+        body = json.loads(request.content)
+        dev.posts.append(body)
+        if "pin" in body and dev.pin is not None and body["pin"] == dev.pin:
+            dev.unlocked = True
+        if not dev.unlocked:
+            return httpx.Response(401, json={"error": 1})
+        ota = body.get("ota")
+        if isinstance(ota, dict):
+            pwd = ota.get("psk")
+            pwd_correct = not dev.ota_lock or (pwd is not None and pwd == dev.ota_password)
+            if pwd_correct and "lock" in ota:
+                dev.ota_lock = bool(ota["lock"])
+        return httpx.Response(200, json={"success": True})
 
     def _ota(self, dev: FakeDevice, request: httpx.Request) -> httpx.Response:
         from wledadmin.wled.firmware import normalize_release, parse_firmware

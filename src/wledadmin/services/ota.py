@@ -94,6 +94,9 @@ class DevicePlan:
     # Escolha manual ou .bin próprio: exige confirmação por dispositivo.
     needs_device_confirm: bool = False
     reinstall: bool = False
+    # Trava de OTA ligada: será desligada antes do envio e religada depois (exige a
+    # senha de OTA na confirmação).
+    ota_locked: bool = False
 
     def block(self, reason: str) -> DevicePlan:
         self.status = PlanStatus.BLOCKED
@@ -125,6 +128,7 @@ class RecoveryReport:
     error: str | None = None
     version: str | None = None
     files: list[FileCheck] = field(default_factory=list)
+    ota_locked: bool | None = None
 
     @property
     def needs_restore(self) -> bool:
@@ -154,6 +158,8 @@ class OtaService:
         on_device_changed: Callable[[], None] | None = None,
         reboot_initial_delay: float = 5.0,
         reboot_poll_interval: float = 3.0,
+        lock_poll_interval: float = 0.5,
+        lock_timeout: float = 5.0,
     ) -> None:
         self._sf = session_factory
         self._client = client
@@ -167,6 +173,8 @@ class OtaService:
         self._notify = on_device_changed
         self._reboot_initial_delay = reboot_initial_delay
         self._reboot_poll_interval = reboot_poll_interval
+        self._lock_poll_interval = lock_poll_interval
+        self._lock_timeout = lock_timeout
 
     @property
     def repo(self) -> str:
@@ -254,10 +262,10 @@ class OtaService:
             plan.block("dispositivo offline (ou ainda não consultado)")
             return False
         if ota_locked:
-            plan.block("OTA bloqueado no dispositivo: desative \"OTA lock\" em Config → "
-                       "Security & Updates (exige a senha de OTA)")
-            return False
-        if ota_locked is None:
+            plan.ota_locked = True
+            plan.warnings.append("a trava de OTA está ligada: será desligada antes do envio e "
+                                 "religada depois (informe a senha de OTA na confirmação)")
+        elif ota_locked is None:
             plan.warnings.append("não consegui ler o cfg.json para conferir o OTA lock")
         return True
 
@@ -400,7 +408,7 @@ class OtaService:
     # ---- execução ----------------------------------------------------------------------
 
     def run(self, plans: list[DevicePlan], *, pin: str | None, stop_on_failure: bool,
-            title: str, backup: bool = True) -> Job:
+            title: str, backup: bool = True, ota_password: str | None = None) -> Job:
         runnable = [p for p in plans if p.status is PlanStatus.READY and p.steps]
         by_id = {p.device.id: p for p in runnable}
         stopped = {"value": False}
@@ -411,7 +419,7 @@ class OtaService:
                 item.message = "cancelado: um dispositivo anterior falhou"
                 return
             try:
-                await self._update_device(by_id[device.id], pin, item, backup)
+                await self._update_device(by_id[device.id], pin, item, backup, ota_password)
             except Exception:
                 if stop_on_failure:
                     stopped["value"] = True
@@ -421,7 +429,7 @@ class OtaService:
                                 kind="ota")
 
     async def _update_device(self, plan: DevicePlan, pin: str | None, item: JobItem,
-                             backup: bool) -> None:
+                             backup: bool, ota_password: str | None = None) -> None:
         device = plan.device
         if backup:
             item.step("Backup de cfg.json e presets.json antes de atualizar")
@@ -434,15 +442,67 @@ class OtaService:
         else:
             item.step("Backup pulado (desativado na confirmação)")
 
-        async with self._registry.lock(device.id):
-            total = len(plan.steps)
-            for n, choice in enumerate(plan.steps, 1):
-                prefix = f"[{n}/{total}] " if total > 1 else ""
-                await self._install(device, choice, pin, item, prefix)
         final = format_version(plan.steps[-1].version)
-        item.message = f"atualizado para {final}" if final != "?" else "firmware instalado"
+        done = f"atualizado para {final}" if final != "?" else "firmware instalado"
+        async with self._registry.lock(device.id):
+            unlocked = False
+            try:
+                if plan.ota_locked:
+                    await self._unlock_ota(device, pin, ota_password, item)
+                    unlocked = True
+                total = len(plan.steps)
+                for n, choice in enumerate(plan.steps, 1):
+                    prefix = f"[{n}/{total}] " if total > 1 else ""
+                    await self._install(device, choice, pin, item, prefix)
+            except Exception:
+                if unlocked:  # tenta religar mesmo com falha; não mascara o erro original
+                    await self.relock_ota(device, pin, item)
+                raise
+            if unlocked and not await self.relock_ota(device, pin, item):
+                raise StepFailed(f"{done}, mas não consegui religar a trava de OTA. "
+                                 "Use \"Recuperar\" para religá-la.")
+        item.message = done
         if self._notify:
             self._notify()
+
+    async def _unlock_ota(self, device: Device, pin: str | None,
+                          ota_password: str | None, item: JobItem) -> None:
+        item.step("Desligando a trava de OTA")
+        if not ota_password:
+            raise StepFailed("a trava de OTA está ligada; informe a senha de OTA")
+        try:
+            await self._client.set_ota_lock(device.ip, False, pin=pin, ota_password=ota_password)
+        except WLEDAuthRequired as e:
+            raise StepFailed("o dispositivo exigiu o PIN de configurações para mudar a trava "
+                             "de OTA (PIN ausente ou incorreto)") from e
+        except WLEDError as e:
+            raise StepFailed(f"não consegui desligar a trava de OTA: {e}") from e
+        if not await self._client.wait_ota_lock(device.ip, False,
+                                                interval=self._lock_poll_interval,
+                                                timeout=self._lock_timeout):
+            raise StepFailed("senha de OTA incorreta: a trava continua ligada e nada foi "
+                             "enviado")
+        item.step("Trava de OTA desligada")
+
+    async def relock_ota(self, device: Device, pin: str | None, item: JobItem | None) -> bool:
+        """Religa a trava de OTA. Não levanta exceção: devolve se conseguiu."""
+        if item:
+            item.step("Religando a trava de OTA")
+        try:
+            await self._client.set_ota_lock(device.ip, True, pin=pin, ota_password=None)
+            ok = await self._client.wait_ota_lock(device.ip, True,
+                                                  interval=self._lock_poll_interval,
+                                                timeout=self._lock_timeout)
+        except WLEDError:
+            ok = False
+        if item:
+            if ok:
+                item.step("Trava de OTA religada")
+                item.data.pop("ota_relock_pending", None)
+            else:
+                item.step("Aviso: não consegui religar a trava de OTA; ela ficou desligada")
+                item.data["ota_relock_pending"] = True
+        return ok
 
     async def _install(self, device: Device, choice: FirmwareChoice, pin: str | None,
                        item: JobItem, prefix: str) -> None:
@@ -584,7 +644,11 @@ class OtaService:
             full = await self._backups.get(latest.id)
             same = full is not None and _same_json(current, full.content)
             files.append(FileCheck(kind, latest, "same" if same else "different"))
-        return RecoveryReport(online=True, version=info.ver, files=files)
+        try:
+            ota_locked = await self._client.get_ota_lock(device.ip)
+        except WLEDError:
+            ota_locked = None
+        return RecoveryReport(online=True, version=info.ver, files=files, ota_locked=ota_locked)
 
     async def last_failure(self, mac: str) -> OtaUpdate | None:
         async with self._sf() as s:

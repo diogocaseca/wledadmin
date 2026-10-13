@@ -16,6 +16,27 @@
   {% endif %}
 </section>
 
+{% if relock_result == "ok" %}
+  <p class="flash success block">Trava de OTA religada.</p>
+{% elif relock_result == "fail" %}
+  <p class="flash error block">Não consegui religar a trava de OTA. Confira se o dispositivo
+    está online e se o PIN está correto.</p>
+{% endif %}
+
+{% if relock_pending or (report.online and report.ota_locked is false and relock_result == "fail") %}
+<section class="card wide">
+  <h2>Trava de OTA desligada</h2>
+  <p class="warn-text">A trava de OTA deste dispositivo foi desligada para a atualização e não
+    pôde ser religada{% if not report.online %} porque ele não está respondendo{% endif %}.
+    Religue assim que ele estiver online.</p>
+  <form method="post" action="/firmware/recover/{{ job_id }}/{{ device.id }}/relock" class="inline wrap">
+    <input type="password" name="pin" inputmode="numeric" autocomplete="off" maxlength="8"
+           placeholder="PIN (se houver)" aria-label="PIN de configurações">
+    <button type="submit" class="primary" {% if not report.online %}disabled{% endif %}>Religar trava de OTA</button>
+  </form>
+</section>
+{% endif %}
+
 <section class="card wide">
   <h2>Situação agora</h2>
   {% if not report.online %}

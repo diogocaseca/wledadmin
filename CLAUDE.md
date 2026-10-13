@@ -91,6 +91,12 @@ campos: confira em `wled00/json.cpp`, `wled_server.cpp`, `cfg.cpp`, `ota_update.
   com magic `0x57535453` e hash DJB2). **Nunca enviar `skipValidation`.** Downgrade é
   bloqueado; a versão mínima segura gera duas etapas na escolha automática e só aviso
   em `.bin` próprio/escolha manual.
+  Trava de OTA (`ota.lock` no `cfg.json`): não bloqueia; com a senha de OTA (≠ PIN)
+  informada na confirmação, `WLEDClient.set_ota_lock` faz POST parcial em `/json/cfg`
+  (`{"pin", "ota": {"psk", "lock"}}`) e `wait_ota_lock` confere no `cfg.json`, porque o
+  WLED responde sucesso mesmo com senha errada. Religar nunca reenvia `psk`
+  (`getStringFromJson` ignora nulo, então a senha guardada não muda). Nunca usar
+  `/settings/sec` para isso: ele redefine outras opções e pode trocar o PIN.
   O backup `pre_ota` é opcional (caixa marcada por padrão). Jobs de OTA têm
   `Job.kind == "ota"`, e itens com falha levam a `/firmware/recover/<job>/<device>`, que
   usa `OtaService.diagnose()` (estado ao vivo × backup mais novo) para sugerir restore.

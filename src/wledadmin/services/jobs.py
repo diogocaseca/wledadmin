@@ -15,6 +15,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 from ..models import Device, utcnow
 
@@ -48,6 +49,8 @@ class JobItem:
     status: ItemStatus = ItemStatus.PENDING
     message: str | None = None
     steps: list[str] = field(default_factory=list)
+    # Informações para telas posteriores (ex.: "trava de OTA ficou desligada")
+    data: dict[str, Any] = field(default_factory=dict)
 
     def step(self, text: str) -> None:
         self.steps.append(text)

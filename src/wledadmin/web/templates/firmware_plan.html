@@ -82,6 +82,15 @@
       <input type="password" name="pin" inputmode="numeric" autocomplete="off" maxlength="8">
       <span class="muted small">Usado só nesta operação; não é guardado.</span>
     </label>
+    {% if plans | selectattr("ota_locked") | list %}
+    <label>Senha de OTA do WLED (dispositivos com a trava de OTA ligada)
+      <input type="password" name="ota_password" autocomplete="off" maxlength="32" required>
+      <span class="muted small">
+        Necessária para desligar a trava antes do envio; a trava é religada logo depois.
+        Padrão de fábrica do WLED: <code>wledota</code>. Não é guardada.
+      </span>
+    </label>
+    {% endif %}
     <label class="check"><input type="checkbox" name="backup"
            {% if form.get('backup', True) %}checked{% endif %}
            onchange="document.getElementById('no-backup').hidden = this.checked">
